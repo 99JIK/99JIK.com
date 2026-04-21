@@ -123,7 +123,7 @@ body {
   overflow: hidden;
 }
 .term-banner-logo {
-  white-space: pre; line-height: 1.02; font-size: 28px;
+  white-space: pre; line-height: 1.02; font-size: 20px;
   font-family: inherit; margin: 0; padding: 0;
   color: var(--t-accent);
   user-select: none;
@@ -131,9 +131,10 @@ body {
   flex-shrink: 0;
   text-rendering: geometricPrecision;
   font-kerning: none;
+  font-variant-ligatures: none;
   text-shadow:
     0 0 2px color-mix(in oklab, var(--t-accent) 60%, transparent),
-    0 0 24px color-mix(in oklab, var(--t-accent) 28%, transparent);
+    0 0 20px color-mix(in oklab, var(--t-accent) 28%, transparent);
 }
 .term-banner-logo::-webkit-scrollbar { height: 0; display: none; }
 .term-banner-anim {
@@ -198,17 +199,17 @@ body {
     overflow: visible;
     gap: 10px;
   }
-  /* 22-char logo → plenty of headroom on mobile, can be big */
-  .term-banner-logo { font-size: 20px; line-height: 1.02; }
+  /* 35-char ANSI Shadow logo — size so it fits narrow viewports */
+  .term-banner-logo { font-size: 12px; line-height: 1.02; }
   .term-banner-meta { font-size: 11px; gap: 4px 8px; }
   .term-banner-meta .tbm-name { font-size: 12px; }
   .term-banner-meta .tbm-online { margin-left: 0; flex-basis: 100%; }
 }
 @media (max-width: 400px) {
-  .term-banner-logo { font-size: 16px; }
+  .term-banner-logo { font-size: 10px; }
 }
 @media (max-width: 340px) {
-  .term-banner-logo { font-size: 13px; }
+  .term-banner-logo { font-size: 9px; }
 }
 
 /* ===== Chat messages ===== */
