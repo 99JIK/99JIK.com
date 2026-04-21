@@ -1,0 +1,16 @@
+{
+  "name": "99jik-site",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Personal site of Jeongin Kim — 99jik.com",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "calendar": "node scripts/fetch-calendar.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "preact": "^10.22.0"
+  }
+}

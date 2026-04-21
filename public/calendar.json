@@ -1,0 +1,6 @@
+{
+  "updated": "2026-04-20T08:00:00+09:00",
+  "source": "placeholder",
+  "note": "Replaced hourly by .github/workflows/calendar.yml — see scripts/fetch-calendar.mjs",
+  "events": []
+}
