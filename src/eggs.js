@@ -53,22 +53,31 @@
 
   // ---- handlers ----
 
-  function iAm(raw, { lang }) {
-    const m = raw.match(/^i\s+am\s+(.+)$/i) || raw.match(/^(?:나는|내가)\s+(.+?)(?:\s*(?:야|이야|입니다|다))?$/);
-    if (!m) return null;
-    const name = m[1].trim().replace(/[.!?]+$/, "").slice(0, 24);
+  // Accounts that look real (listed in /etc/passwd) — can't be impersonated.
+  const PROTECTED_SU = ["jeongin", "stlab", "memo", "root"];
+
+  function su(raw, { lang }) {
+    if (!/^su(\s|$)/i.test(raw)) return null;
+    const parts = raw.trim().split(/\s+/);
+    const args = parts.slice(1).filter(p => p !== "-");  // allow `su -` prefix
+    if (args.length === 0) {
+      return [text(lang === "en" ? "usage: su <name>   — e.g. su alice" : "사용법: su <name>   — 예: su alice", { warn: true })];
+    }
+    const name = args.join(" ").replace(/[.!?]+$/, "").slice(0, 24).trim();
     if (!name) return null;
+
+    // Protected account? Ask for a password, then always reject.
+    if (PROTECTED_SU.includes(name.toLowerCase())) {
+      window.dispatchEvent(new CustomEvent("su-prompt", { detail: { user: name } }));
+      return [text(lang === "en" ? `Password:` : `비밀번호:`)];
+    }
+
+    // Non-protected: just become them.
     window.setPromptName(name);
     return [
-      text(lang === "en" ? `nice to meet you, ${name}.` : `반가워요, ${name}.`, { strong: true }),
-      text(lang === "en" ? `(try 'whoami' -- it knows you now.)` : `(whoami 해보세요 -- 이제 기억하고 있어요.)`, { dim: true }),
+      text(lang === "en" ? `welcome, ${name}.` : `반가워요, ${name}.`, { strong: true }),
+      text(lang === "en" ? `(type 'exit' to log out.)` : `('exit' 로 로그아웃.)`, { dim: true }),
     ];
-  }
-
-  function forgetMe(raw, { lang }) {
-    if (!/^forget\s+me$|^나를\s*잊/i.test(raw)) return null;
-    window.setPromptName(null);
-    return [text(lang === "en" ? "forgotten. back to anonymous." : "잊었어요. 다시 익명입니다.", { dim: true })];
   }
 
   function sudoRm(raw, { lang }) {
@@ -78,7 +87,7 @@
       text("  rm: removing 'stars'       ... ok"),
       text("  rm: removing 'galaxies'    ... ok"),
       text("  rm: removing 'matter'      ... ok"),
-      text("  rm: removing 'Jeongin'     ... not today."),
+      text("  rm: removing 'JIK'         ... not today."),
       text(""),
       text(lang === "en" ? "[ just kidding. your filesystem is safe. ]" : "[ 농담이에요. 시스템은 멀쩡합니다. ]", { dim: true }),
     ];
@@ -162,9 +171,15 @@
     ];
   }
 
-  function exitJoke(raw, { lang }) {
+  function exitRevert(raw, { lang }) {
     if (!/^(exit|quit|logout)$/i.test(raw)) return null;
-    return [text(lang === "en" ? "you can check out any time, but you can never leave." : "나갈 수는 있지만, 떠날 수는 없어요.", { warn: true })];
+    const current = window.getPromptName ? window.getPromptName() : "anonymous";
+    if (!current || current === "anonymous") {
+      // Already anonymous — there's nothing to exit from. Keep the old joke.
+      return [text(lang === "en" ? "you can check out any time, but you can never leave." : "나갈 수는 있지만, 떠날 수는 없어요.", { warn: true })];
+    }
+    window.setPromptName(null);
+    return [text(lang === "en" ? `logged out ${current}. back to anonymous.` : `로그아웃 (${current}). 다시 anonymous 입니다.`, { dim: true })];
   }
 
   // vi, vim, :q, :wq, :q! -> all the same "how do I exit" joke
@@ -194,7 +209,10 @@
 
   function rmAnything(raw, { lang }) {
     if (!/^rm(\s|$)/i.test(raw) || /^sudo\s/i.test(raw)) return null;
-    return [text(lang === "en" ? "rm: permission denied. (the interns are sleeping.)" : "rm: 권한이 없어요. (인턴이 자고 있거든요.)", { warn: true })];
+    return [
+      text(lang === "en" ? "rm: Permission denied" : "rm: 권한 없음", { warn: true }),
+      text(lang === "en" ? "(read-only filesystem. on purpose.)" : "(읽기 전용 파일시스템. 의도적.)", { dim: true }),
+    ];
   }
 
   function matrix(raw) {
@@ -255,17 +273,28 @@ function yes(raw) {
     return [{ kind: "live-top" }];
   }
 
+  function reboot(raw, { lang }) {
+    if (!/^reboot$/i.test(raw)) return null;
+    setTimeout(() => {
+      try { window.dispatchEvent(new CustomEvent("site-reboot")); } catch {}
+    }, 600);
+    return [
+      text(lang === "en" ? "rebooting JIKOS..." : "JIKOS 재부팅 중...", { strong: true }),
+      text(lang === "en" ? "(any key during boot to skip)" : "(부팅 중 아무 키 누르면 스킵)", { dim: true }),
+    ];
+  }
+
   function uname(raw, { lang }) {
     if (!/^uname(\s|$)/i.test(raw)) return null;
     const args = raw.split(/\s+/).slice(1);
     const flags = new Set();
     args.forEach(a => { if (a.startsWith("-")) a.slice(1).split("").forEach(c => flags.add(c)); });
-    if (flags.has("a")) return [text("JeonginOS 25.04 99jik 6.10-coffee #42-jeongin SMP KST 2026 x86_64 jeongin/GNU Linux")];
+    if (flags.has("a")) return [text("JIKOS 25.04 99jik 6.10-coffee #42-jik SMP KST 2026 x86_64 JIK/GNU Linux")];
     if (flags.has("r")) return [text("6.10-coffee")];
     if (flags.has("m")) return [text("x86_64")];
     if (flags.has("n")) return [text(window.SITE_DATA.site.handle)];
-    if (flags.has("s") || flags.size === 0) return [text("JeonginOS")];
-    return [text("JeonginOS")];
+    if (flags.has("s") || flags.size === 0) return [text("JIKOS")];
+    return [text("JIKOS")];
   }
 
   function sl(raw) {
@@ -313,6 +342,316 @@ function yes(raw) {
     return [text(lang === "en" ? "cheat codes disabled in production. nice try." : "프로덕션 환경에서는 치트 비활성화. 좋은 시도.", { warn: true })];
   }
 
+  // ── LLM research self-burns ──
+  function hallucinate(raw, { lang }) {
+    if (!/^hallucinate$/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "confident output. citations fabricated." : "자신감 넘치는 답변. 인용은 날조됨.", { strong: true }),
+      text(lang === "en" ? "cognitive status: unchanged." : "인지 상태: 변함없음.", { dim: true }),
+    ];
+  }
+
+  function temperature(raw, { lang }) {
+    if (!/^temperature(\s|$)/i.test(raw)) return null;
+    const v = raw.split(/\s+/)[1];
+    if (v === "0" || v === "0.0") {
+      return [text(lang === "en" ? "deterministic but boring. just like me before coffee." : "결정적이지만 지루함. 커피 전의 나와 똑같음.")];
+    }
+    const t = v && !isNaN(parseFloat(v)) ? parseFloat(v) : null;
+    if (t !== null) {
+      if (t >= 1.5) return [text(lang === "en" ? `temp ${t}: word salad mode engaged.` : `temp ${t}: 단어 샐러드 모드 진입.`, { warn: true })];
+      if (t > 1) return [text(lang === "en" ? `temp ${t}: getting creative. watch out.` : `temp ${t}: 창의적으로 가는 중. 주의.`)];
+      return [text(lang === "en" ? `temp ${t}: noted. shipping.` : `temp ${t}: 접수. 배포.`)];
+    }
+    return [text(lang === "en" ? "usage: temperature <0..2>" : "사용법: temperature <0..2>", { dim: true })];
+  }
+
+  function promptEgg(raw, { lang }) {
+    if (!/^prompt$/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "engineering it. adding 'please' and 'you are an expert'." : "엔지니어링 중. 'please' 와 '당신은 전문가' 삽입 중."),
+      text(lang === "en" ? "performance: marginally improved." : "성능: 미미하게 개선됨.", { dim: true }),
+    ];
+  }
+
+  function stochasticParrot(raw, { lang }) {
+    if (!/^(stochastic\s+)?parrot$/i.test(raw)) return null;
+    return [
+      text(">.<"),
+      text(lang === "en" ? "— Bender, Gebru, McMillan-Major, Shmitchell. (FAccT 2021)" : "— Bender, Gebru, McMillan-Major, Shmitchell. (FAccT 2021)", { dim: true }),
+    ];
+  }
+
+  // ── Git humor ──
+  function forcePush(raw, { lang }) {
+    if (!/^(git\s+push\s+(--force|-f)|force\s+push)$/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "pushed. hope your teammates forgive you." : "푸시 완료. 팀원들이 용서해주길.", { warn: true }),
+      text(lang === "en" ? "(the rebase gods are not merciful.)" : "(rebase 의 신은 자비롭지 않다.)", { dim: true }),
+    ];
+  }
+
+  // ── Unix command jokes (bilingual) ──
+  function ifconfig(raw, { lang }) {
+    if (!/^(ifconfig|ip\s+addr)(\s|$)/i.test(raw)) return null;
+    const d = window.SITE_DATA.site.domain;
+    return [
+      text("lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536"),
+      text("        inet 127.0.0.1  netmask 255.0.0.0"),
+      text(lang === "en" ? "        (mostly talking to myself)" : "        (주로 혼잣말 중)", { dim: true }),
+      text(""),
+      text("eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500"),
+      text(`        inet  ${d}`),
+      text(lang === "en" ? "        status: caffeinated." : "        상태: 카페인 충전됨.", { dim: true }),
+    ];
+  }
+
+  function netstat(raw, { lang }) {
+    if (!/^netstat(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "Active connections:" : "활성 연결:", { strong: true }),
+      text("tcp  localhost:8080  stlab:ssh        ESTABLISHED"),
+      text("tcp  localhost:22    jeongin:zsh      LISTEN"),
+      text("tcp  localhost:443   crisp:chat       ESTABLISHED"),
+      text("tcp  localhost:5432  coffee.service   TIME_WAIT"),
+    ];
+  }
+
+  function ps(raw, { lang }) {
+    if (!/^ps(\s|$)/i.test(raw)) return null;
+    return [
+      text("  PID USER     CMD"),
+      text("    1 jeongin  /sbin/init"),
+      text("  123 jeongin  zsh"),
+      text(lang === "en" ? "  456 jeongin  vim (trapped)" : "  456 jeongin  vim (갇힘)"),
+      text(lang === "en" ? "  789 jeongin  writing-paper" : "  789 jeongin  논문-쓰는-중"),
+      text(lang === "en" ? " 1337 jeongin  thinking-about-testing" : " 1337 jeongin  테스팅-생각-중"),
+      text(" 4200 llm      hallucinate --confident", { dim: true }),
+    ];
+  }
+
+  function df(raw, { lang }) {
+    if (!/^df(\s|$)/i.test(raw)) return null;
+    return [
+      text("Filesystem       Size   Used  Avail Use%  Mounted on"),
+      text("/dev/jeongin1    1.0T   978G    22G  98%  /home/jeongin"),
+      text("/dev/coffee      inf    inf     0   100%  /mnt/fuel"),
+      text("tmpfs             16G    0      16G   0%  /tmp"),
+      text("/dev/papers      500G   500G    0   100%  /home/jeongin/.lab"),
+      text(lang === "en" ? "(running out. caffeine helps.)" : "(거의 꽉참. 카페인이 도움됨.)", { dim: true }),
+    ];
+  }
+
+  function freemem(raw, { lang }) {
+    if (!/^free(\s|$)/i.test(raw)) return null;
+    return [
+      text("              total        used        free      cached"),
+      text("Mem:         16384M      15800M        384M     12288M (coffee)"),
+      text(lang === "en"
+        ? "Swap:         2048M       1984M         64M (paging to whiteboard)"
+        : "Swap:         2048M       1984M         64M (화이트보드로 페이징)"),
+    ];
+  }
+
+  function envCmd(raw, { lang }) {
+    if (!/^(env|printenv)(\s|$)/i.test(raw)) return null;
+    return [
+      text("USER=jeongin"),
+      text("HOME=/home/jeongin"),
+      text("SHELL=/bin/zsh"),
+      text("PATH=/usr/local/bin:/usr/bin:/bin:/coffee"),
+      text("LANG=ko_KR.UTF-8"),
+      text(lang === "en" ? "EDITOR=vim    # don't ask how to exit" : "EDITOR=vim    # 나가는 법은 묻지 말기"),
+      text("ADVISOR=watching"),
+      text("MOOD=caffeinated"),
+    ];
+  }
+
+  function man(raw, { lang }) {
+    const m = raw.match(/^man\s+(\S+)/i);
+    if (!m) return null;
+    return [
+      text(`No manual entry for ${m[1]}.`),
+      text(lang === "en"
+        ? "(RTFM stands for 'Read The Fine Manual'. alas, there is none.)"
+        : "('RTFM — Read The Fine Manual' 라는데, 정작 매뉴얼이 없음.)", { dim: true }),
+    ];
+  }
+
+  function curlWget(raw, { lang }) {
+    const m = raw.match(/^(curl|wget)\s+(\S+)/i);
+    if (!m) return null;
+    const d = window.SITE_DATA.site.domain;
+    return [
+      text(`* connecting to ${m[2]}...`),
+      text(`* curl: (6) could not resolve host of existence`, { warn: true }),
+      text(lang === "en"
+        ? `(the only URL that works here is ${d})`
+        : `(여기서 동작하는 URL은 ${d} 뿐이에요)`, { dim: true }),
+    ];
+  }
+
+  function sshCmd(raw, { lang }) {
+    if (!/^ssh\s+\S+/i.test(raw)) return null;
+    return [
+      text("ssh: Permission denied (publickey).", { warn: true }),
+      text(lang === "en"
+        ? "(this isn't your machine. try 'chat' instead.)"
+        : "(여긴 본인 머신이 아니에요. 'chat' 써보세요.)", { dim: true }),
+    ];
+  }
+
+  function installPkg(raw, { lang }) {
+    const m = raw.match(/^(apt|apt-get|pip|pip3|npm|yarn|brew|pacman|yum|dnf|cargo)\s+(install|add|i)\s+(\S+)/i);
+    if (!m) return null;
+    const mgr = m[1], pkg = m[3];
+    if (pkg.toLowerCase() === "coffee") {
+      return [text(lang === "en"
+        ? "coffee: already at highest priority. cannot upgrade."
+        : "coffee: 이미 최고 우선순위. 업그레이드 불가.")];
+    }
+    return [
+      text(`${mgr}: resolving ${pkg}...`),
+      text(`${mgr}: ${pkg} not in /dev/null repo.`, { warn: true }),
+      text(lang === "en"
+        ? "(this terminal doesn't install things. request via 'chat'.)"
+        : "(이 터미널은 실제 설치 안 함. 'chat' 으로 요청해보세요.)", { dim: true }),
+    ];
+  }
+
+  function touchCmd(raw, { lang }) {
+    const m = raw.match(/^touch\s+(\S+)/i);
+    if (!m) return null;
+    return [
+      text(lang === "en"
+        ? `touched '${m[1]}'. symbolically.`
+        : `'${m[1]}' 를 상징적으로 만짐.`),
+      text(lang === "en"
+        ? "(filesystem is read-only. art, not drafts.)"
+        : "(파일시스템은 읽기 전용. 작품이라서.)", { dim: true }),
+    ];
+  }
+
+  function mkdirCmd(raw, { lang }) {
+    if (!/^mkdir(\s|$)/i.test(raw)) return null;
+    return [text(lang === "en"
+      ? "mkdir: cannot create directory: Read-only filesystem (by design)."
+      : "mkdir: 디렉토리 생성 불가: 읽기 전용 파일시스템 (의도적).", { warn: true })];
+  }
+
+  function shutdownCmd(raw, { lang }) {
+    if (!/^(shutdown|poweroff|halt)(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "shutdown: this terminal cannot shut down."
+        : "shutdown: 이 터미널은 꺼지지 않아요.", { warn: true }),
+      text(lang === "en" ? "(close the tab like a civilized person.)" : "(그냥 탭을 닫으세요.)", { dim: true }),
+    ];
+  }
+
+  function chmod777(raw, { lang }) {
+    if (!/^chmod\s+0?777(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "chmod 777: done. world-readable, world-writable, world-executable."
+        : "chmod 777: 완료. 모두에게 읽기/쓰기/실행 권한."),
+      text(lang === "en"
+        ? "(privacy was a nice idea while it lasted.)"
+        : "(프라이버시라는 개념, 좋았죠.)", { dim: true }),
+    ];
+  }
+
+  function killInit(raw, { lang }) {
+    if (!/^kill\s+-9\s+1\b/i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "kill: cannot send signal to PID 1: Operation not permitted."
+        : "kill: PID 1 에 신호 전송 불가: 권한 없음.", { warn: true }),
+      text(lang === "en" ? "(that was init. nice attempt.)" : "(init 이었어요. 시도는 좋았습니다.)", { dim: true }),
+    ];
+  }
+
+  function forkBomb(raw, { lang }) {
+    if (!/^:\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:/i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "bash: fork: Resource temporarily unavailable"
+        : "bash: fork: 자원 일시적 사용 불가", { warn: true }),
+      text(lang === "en" ? "(fork bomb. classic. noted.)" : "(fork bomb, 고전이네요.)", { dim: true }),
+    ];
+  }
+
+  function ddZero(raw, { lang }) {
+    if (!/^dd\s+if=\/dev\/(zero|urandom|random)\s+of=\/dev\//i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "dd: failed to open '/dev/sda': Permission denied"
+        : "dd: '/dev/sda' 열기 실패: 권한 없음", { warn: true }),
+      text(lang === "en"
+        ? "(we don't have raw disks here. also — why.)"
+        : "(여긴 raw disk 없어요. 그리고 — 왜.)", { dim: true }),
+    ];
+  }
+
+  function sudoBang(raw, { lang }) {
+    if (!/^sudo\s+!!$/i.test(raw)) return null;
+    return [
+      text("sudo: bash: !!: command not found"),
+      text(lang === "en" ? "(xkcd 149 not shipped yet.)" : "(xkcd 149 는 미구현.)", { dim: true }),
+    ];
+  }
+
+  function historyClear(raw, { lang }) {
+    if (!/^history\s+-c$/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "history cleared." : "기록 삭제됨."),
+      text(lang === "en"
+        ? "(this session. the browser still remembers.)"
+        : "(이 세션만요. 브라우저는 다 기억합니다.)", { dim: true }),
+    ];
+  }
+
+  function fsckCmd(raw, { lang }) {
+    if (!/^fsck(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "fsck from util-linux 2.39" : "fsck from util-linux 2.39"),
+      text("/dev/jeongin1: clean, 420/1048576 files, 69420/4194304 blocks"),
+      text(lang === "en"
+        ? "(read-only filesystem. nothing to fix, nothing to break.)"
+        : "(읽기 전용. 고칠 것도, 깨질 것도 없음.)", { dim: true }),
+    ];
+  }
+
+  function gitReset(raw, { lang }) {
+    if (!/^git\s+reset(\s+--hard)?(\s|$)/i.test(raw)) return null;
+    return [
+      text("HEAD is now at 0000000 (sync)"),
+      text(lang === "en"
+        ? "(your work was probably fine. oh well.)"
+        : "(작업물 괜찮았을 텐데요. 이제 아니고요.)", { dim: true }),
+    ];
+  }
+
+  function gitBlame(raw, { lang }) {
+    if (!/^git\s+blame(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en" ? "fatal: not a git repository" : "fatal: git 저장소 아님", { warn: true }),
+      text(lang === "en" ? "(but yes, it was you.)" : "(근데 아마 당신이었을 거예요.)", { dim: true }),
+    ];
+  }
+
+  function catUrandom(raw, { lang }) {
+    if (!/^cat\s+\/dev\/(u?random|zero)(\s|$)/i.test(raw)) return null;
+    return [
+      text(lang === "en"
+        ? "cat: /dev/urandom: permission denied"
+        : "cat: /dev/urandom: 권한 없음", { warn: true }),
+      text(lang === "en"
+        ? "(you don't want that output. trust me.)"
+        : "(그 출력 보고 싶지 않으실 거예요.)", { dim: true }),
+    ];
+  }
+
   function credits(raw, { lang }) {
     if (!/^credits$|^thanks$|^about\s+this\s+site$/i.test(raw)) return null;
     return [
@@ -325,13 +664,22 @@ function yes(raw) {
   }
 
   const handlers = [
-    iAm, forgetMe,
+    su,
     sudoRm, sandwich, rmAnything,
-    coffee, fortune, date, uptime, ping, top, uname,
-    hi, exitJoke, vimJoke, emacsJoke, nanoJoke,
+    coffee, fortune, date, uptime, ping, top, uname, reboot,
+    hi, exitRevert, vimJoke, emacsJoke, nanoJoke,
     matrix, konamiHint,
     forty_two, hireMe,
     lolcat, lsLa, catSecret, catDreams, yes, sl, cowsay, star, god, credits,
+    // LLM research self-burns
+    hallucinate, temperature, promptEgg, stochasticParrot,
+    // Git humor
+    forcePush,
+    // Unix command jokes
+    ifconfig, netstat, ps, df, freemem, envCmd, man, curlWget, sshCmd,
+    installPkg, touchCmd, mkdirCmd, shutdownCmd, chmod777, killInit,
+    forkBomb, ddZero, sudoBang, historyClear, fsckCmd,
+    gitReset, gitBlame, catUrandom,
   ];
 
   function tryHandle(input, ctx) {

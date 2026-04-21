@@ -101,11 +101,19 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
   const [promptName, setPromptName] = React.useState(() => (window.getPromptName ? window.getPromptName() : "anonymous"));
   const [promptPath, setPromptPath] = React.useState(() => (window.FS ? window.FS.displayCwd() : "~"));
   const [matrixOn, setMatrixOn] = React.useState(false);
+  const [suAwait, setSuAwait] = React.useState(null); // username being authenticated
   const inputRef = React.useRef(null);
   const scrollRef = React.useRef(null);
 
   // Expose command history for the `history` command (read-only mirror).
   React.useEffect(() => { window.TERM_HISTORY = cmdStack; }, [cmdStack]);
+
+  // su → Password: prompt flow. eggs.js dispatches "su-prompt" for protected users.
+  React.useEffect(() => {
+    const h = (e) => setSuAwait((e && e.detail && e.detail.user) || null);
+    window.addEventListener("su-prompt", h);
+    return () => window.removeEventListener("su-prompt", h);
+  }, []);
 
   // live prompt name updates (eggs.js dispatches 'promptname')
   React.useEffect(() => {
@@ -245,23 +253,63 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [history, suggestions]);
 
+  // Also auto-scroll when block content grows asynchronously (weather fetch,
+  // progressive lines, live-top refresh, chat reply). Only scroll if the user
+  // was already near the bottom — don't yank them if they scrolled up to read.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const inner = el.firstElementChild;
+    if (!inner) return;
+    const obs = new ResizeObserver(() => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (dist < 120) el.scrollTop = el.scrollHeight;
+    });
+    obs.observe(inner);
+    return () => obs.disconnect();
+  }, []);
+
   const pushOut = (blocks) => setHistory(h => [...h, { type: "out", blocks }]);
-  const pushPrompt = (cmd) => setHistory(h => [...h, { type: "prompt", cmd, chat: chatOn, path: window.FS ? window.FS.displayCwd() : "~" }]);
+  const pushPrompt = (cmd, path) => setHistory(h => [...h, { type: "prompt", cmd, chat: chatOn, path }]);
+  const currentPath = () => (window.FS ? window.FS.displayCwd() : "~");
 
   const runCommand = async (raw) => {
     const cmd = (raw || "").trim();
+
+    // Password prompt for `su` on protected accounts — always fails.
+    if (suAwait) {
+      const user = suAwait;
+      setSuAwait(null);
+      const path = currentPath();
+      setHistory(h => [
+        ...h,
+        { type: "prompt", cmd: "***", chat: false, path, passwordLine: true },
+        { type: "out", blocks: [
+          { kind: "text", text: `su: Authentication failure`, warn: true },
+          { kind: "text", text: lang === "en"
+            ? `(wrong password for ${user}. what did you expect.)`
+            : `(${user} 비밀번호 틀림. 뭘 기대하셨나요.)`, dim: true },
+        ]},
+      ]);
+      setInput("");
+      return;
+    }
+
     if (chatOn) return handleChat(cmd);
 
     if (!cmd) {
-      pushPrompt("");
+      pushPrompt("", currentPath());
       pushOut([{ kind: "text", text: T.emptyAsk, dim: true }]);
       setSuggestions(window.TERMINAL.EMPTY_SUGGESTIONS);
       return;
     }
     if (cmd === "?") { setShowHelp(true); return; }
     setCmdStack(s => [...s, cmd]); setStackIdx(-1);
+    // Snapshot the path BEFORE running the command — `cd` will mutate cwd
+    // and we want the history line to show where the command was typed.
+    const pathAtEntry = currentPath();
     const blocks = window.TERMINAL.run(cmd, lang);
-    pushPrompt(cmd);
+    pushPrompt(cmd, pathAtEntry);
     pushOut(blocks);
     setInput(""); setSuggestions([]);
     const mode = blocks?.find(b => b.kind === "mode");
@@ -316,6 +364,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
     else if (e.key === "l" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setHistory([]); }
     else if (e.key === "?" && !input && !chatOn) { e.preventDefault(); setShowHelp(true); }
     else if (e.key === "Escape" && chatOn) { e.preventDefault(); handleChat("/exit"); }
+    else if (e.key === "Escape" && suAwait) { e.preventDefault(); setSuAwait(null); setInput(""); }
   };
 
   const COMMANDS = window.TERMINAL.buildCommands(lang);
@@ -367,14 +416,21 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
         )}
         <QuickChips lang={lang} onRun={runCommand} chatOn={chatOn} T={T} COMMANDS={COMMANDS} />
         <div className="t-prompt-line active sticky">
-          <span className="t-user">{promptName}@{window.SITE_DATA.site.handle}</span>
-          <span className="t-sep"> in </span>
-          <span className="t-path">{chatOn ? "~/chat" : promptPath}</span>
-          <span className="t-caret"> ❯ </span>
+          {suAwait ? (
+            <span className="t-user">{lang === "en" ? "Password:" : "비밀번호:"}</span>
+          ) : (
+            <>
+              <span className="t-user">{promptName}@{window.SITE_DATA.site.handle}</span>
+              <span className="t-sep"> in </span>
+              <span className="t-path">{chatOn ? "~/chat" : promptPath}</span>
+              <span className="t-caret"> ❯ </span>
+            </>
+          )}
           <span className="t-input-wrap">
             <input
               ref={inputRef}
               autoFocus
+              type={suAwait ? "password" : "text"}
               value={input}
               onChange={e => { setInput(e.target.value); setSuggestions([]); }}
               onKeyDown={onKey}

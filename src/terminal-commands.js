@@ -111,7 +111,7 @@
           return [
             { kind: "text", text: lang === "ko" ? `당신: ${custom}` : `you: ${custom}`, strong: true },
             { kind: "text", text: lang === "ko" ? `(이 사이트의 주인은: ${p.name_ko} / ${p.name_en} — ${p.role_ko})` : `(site owner: ${p.name_en} / ${p.name_ko} — ${p.role_en})`, dim: true },
-            { kind: "text", text: lang === "ko" ? `잊고 싶으면: 'forget me'` : `to forget: 'forget me'`, dim: true },
+            { kind: "text", text: lang === "ko" ? `로그아웃: 'exit'` : `log out: 'exit'`, dim: true },
           ];
         }
         return [{ kind: "text", text: lang === "ko" ? `${p.name_ko} (${p.name_en}) — ${p.role_ko}` : `${p.name_en} (${p.name_ko}) — ${p.role_en}` }];
@@ -126,6 +126,8 @@
       cd: { hint: lang === "ko" ? "디렉토리 이동 (cd projects, cd .., cd ~)" : "change directory (cd projects, cd .., cd ~)", run: (args) => window.FS.cd(args) },
       pwd: { hint: lang === "ko" ? "현재 경로" : "print working directory", run: () => window.FS.pwd() },
       tree: { hint: lang === "ko" ? "디렉토리 트리 (tree, tree projects, tree -a)" : "directory tree (tree, tree projects, tree -a)", run: (args) => window.FS.tree(args) },
+      find: { hint: lang === "ko" ? "파일 찾기 (find /, find . -name *.md)" : "find files (find /, find . -name *.md)", run: (args) => window.FS.find(args, lang) },
+      grep: { hint: lang === "ko" ? "내용 검색 (grep -i pattern /path)" : "search contents (grep -i pattern /path)", run: (args) => window.FS.grep(args, lang) },
       history: {
         hint: lang === "ko" ? "입력한 명령 히스토리" : "show command history",
         run: () => {
@@ -277,7 +279,7 @@
       const slugs = window.SITE_DATA.projects.map(p => p.slug).filter(s => s.startsWith(parts[1]));
       return [...new Set([...fs, ...slugs])].map(s => `cat ${s}`);
     }
-    if ((parts[0] === "ls" || parts[0] === "cd" || parts[0] === "tree") && parts.length === 2) {
+    if ((parts[0] === "ls" || parts[0] === "cd" || parts[0] === "tree" || parts[0] === "find") && parts.length === 2) {
       return (window.FS ? window.FS.complete(parts[1]) : []).map(s => `${parts[0]} ${s}`);
     }
     if (parts[0] === "theme" && parts.length === 2) {

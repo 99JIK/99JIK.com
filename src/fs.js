@@ -2,7 +2,8 @@
 // Tree is built from SITE_DATA so projects/publications/etc stay in sync with data.js.
 
 (function () {
-  const CWD_KEY = "99jik:cwd";
+  const CWD_KEY = "99jik:cwd:v2"; // bumped: layout moved under /home/jeongin
+  const HOME = "/home/jeongin";
 
   // Build the tree. Files carry { type, size, mtime, content } where content is an
   // array of text blocks returned by `cat`.
@@ -47,9 +48,9 @@
       };
     });
 
-    return {
-      type: "dir",
-      mtime: dayAgo(0),
+    // Jeongin's home — all the personal / portfolio content lives here.
+    const jeonginHome = {
+      type: "dir", mtime: dayAgo(0),
       children: {
         "about": {
           type: "file", size: 420, mtime: dayAgo(0),
@@ -194,20 +195,215 @@
         },
       },
     };
+
+    // The full machine: /etc, /home/{jeongin,memo,stlab}, /tmp, /var, /bin.
+    return {
+      type: "dir", mtime: dayAgo(0),
+      children: {
+        "bin": {
+          type: "dir", mtime: dayAgo(365),
+          children: {
+            "README": {
+              type: "file", size: 96, mtime: dayAgo(365),
+              content: [
+                "binaries live somewhere in PATH. you don't need to see them.",
+                "`cd ~` or `cd /home/jeongin` to get back to the interesting stuff.",
+              ],
+            },
+          },
+        },
+        "etc": {
+          type: "dir", mtime: dayAgo(100),
+          children: {
+            "hostname": {
+              type: "file", size: 6, mtime: dayAgo(500),
+              content: [D.site.handle],
+            },
+            "motd": {
+              type: "file", size: 680, mtime: dayAgo(30),
+              content: [
+                `=== Welcome to ${D.site.handle} ===`,
+                "",
+                `${D.profile.name_en}'s playful portfolio machine.`,
+                "",
+                "## getting around",
+                "  cd ~            browse my stuff (/home/jeongin)",
+                "  cd /            see the whole machine",
+                "  ls -a           hidden files (there's more than you think)",
+                "  tree            full layout at a glance",
+                "  help  or  ?     full command list",
+                "",
+                "## say hi",
+                "  su <name>       switch user (exit to go back)",
+                "  chat            message me live",
+                "",
+                "## some fun",
+                "  coffee          fuel",
+                "  fortune         testing-flavored quotes",
+                "  weather         check the sky over daegu",
+                "  cowsay hello    moo",
+                "  top             processes running in my head",
+                "",
+                "## for the curious",
+                "  unix jokes exist. try what you know.",
+                "  keyboard secrets too  (^ ^ v v < > < > ...)",
+                "  some folders pretend to be empty.",
+                "",
+                "that's a start. the rest — poke around.",
+              ],
+            },
+            "os-release": {
+              type: "file", size: 180, mtime: dayAgo(60),
+              content: [
+                `NAME="JIKOS"`,
+                `VERSION="25.04 (caffeinated)"`,
+                `ID=jikos`,
+                `PRETTY_NAME="JIKOS 25.04 (caffeinated)"`,
+                `HOME_URL="https://${D.site.domain}"`,
+                `SUPPORT_URL="type 'chat'"`,
+              ],
+            },
+            "passwd": {
+              type: "file", size: 160, mtime: dayAgo(400),
+              content: [
+                "# partial — only the interesting accounts",
+                "jeongin:x:1000:1000:Master's candidate:/home/jeongin:/bin/zsh",
+                "stlab:x:1001:1001:Software Testing Lab:/home/stlab:/bin/bash",
+                "memo:x:1002:1002:scratchpad:/home/memo:/bin/zsh",
+              ],
+            },
+          },
+        },
+        "home": {
+          type: "dir", mtime: dayAgo(30),
+          children: {
+            "jeongin": jeonginHome,
+            "memo": {
+              type: "dir", mtime: dayAgo(0),
+              children: {
+                "README": {
+                  type: "file", size: 160, mtime: dayAgo(0),
+                  content: [
+                    "# memo/",
+                    "",
+                    "scratchpad — thoughts I don't want to forget.",
+                    "(real notes live in /home/jeongin/.midnight/thoughts.md)",
+                  ],
+                },
+                "ideas.md": {
+                  type: "file", size: 240, mtime: dayAgo(2),
+                  content: [
+                    "# ideas",
+                    "",
+                    "- [ ] write up the SLM oracle confidence experiment",
+                    "- [ ] try seed mutation guided by path coverage",
+                    "- [ ] ask advisor about ISSTA deadline stretch",
+                    "- [ ] blog post: why unit-test LLMs are not enough",
+                  ],
+                },
+                "reading.md": {
+                  type: "file", size: 200, mtime: dayAgo(5),
+                  content: [
+                    "# reading queue",
+                    "",
+                    "- Fuzz4All (ICSE'24)",
+                    "- TitanFuzz, FuzzGPT — LLM fuzzers",
+                    "- Xia et al. — LLM mutation testing",
+                    "- anything citing Barr et al. test oracle problem",
+                  ],
+                },
+              },
+            },
+            "stlab": {
+              type: "dir", mtime: dayAgo(1),
+              children: {
+                "homepage": {
+                  type: "link", target: "https://selab.knu.ac.kr",
+                  mtime: dayAgo(30), size: 26,
+                  content: ["symlink -> https://selab.knu.ac.kr"],
+                },
+                "about.txt": {
+                  type: "file", size: 160, mtime: dayAgo(60),
+                  content: [
+                    "# Software Testing Lab — KNU",
+                    "",
+                    "Principal investigator, students, papers, meetings.",
+                    "homepage symlink → selab.knu.ac.kr",
+                  ],
+                },
+                "course.md": {
+                  type: "file", size: 220, mtime: dayAgo(0),
+                  content: [
+                    "# weekly",
+                    "",
+                    "- Wed 09:00 — SW Testing 3H",
+                    "- Thu 09:00 — Java Programming 4H",
+                    "- Sat 09:00 — SW Testing 3H",
+                    "- ad-hoc — whiteboard sessions, usually 403",
+                  ],
+                },
+                "rooms.txt": {
+                  type: "file", size: 60, mtime: dayAgo(300),
+                  content: [
+                    "main: IT-5 523",
+                    "coffee: the hallway vending machine (tragic)",
+                  ],
+                },
+              },
+            },
+          },
+        },
+        "tmp": {
+          type: "dir", mtime: dayAgo(0),
+          children: {
+            "nothing.txt": {
+              type: "file", size: 14, mtime: dayAgo(0),
+              content: ["as expected."],
+            },
+          },
+        },
+        "var": {
+          type: "dir", mtime: dayAgo(10),
+          children: {
+            "log": {
+              type: "dir", mtime: dayAgo(0),
+              children: {
+                "site.log": {
+                  type: "file", size: 280, mtime: dayAgo(0),
+                  content: [
+                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] session started`,
+                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] banner anim: random pick`,
+                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] seeded scrollback: about, til`,
+                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] calendar.json: placeholder`,
+                    "",
+                    "(ephemeral — regenerated on load)",
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    };
   }
 
   let ROOT = null;
   function root() { if (!ROOT) ROOT = buildTree(); return ROOT; }
 
-  // cwd is a string like "/" or "/projects"
-  let cwd = localStorage.getItem(CWD_KEY) || "/";
+  // cwd is an absolute path string like "/home/jeongin" or "/etc".
+  let cwd = localStorage.getItem(CWD_KEY) || HOME;
   function getCwd() { return cwd; }
   function setCwd(p) {
     cwd = normalize(p);
     localStorage.setItem(CWD_KEY, cwd);
     window.dispatchEvent(new CustomEvent("promptpath"));
   }
-  function displayCwd() { return cwd === "/" ? "~" : "~" + cwd; }
+  // Display: render HOME and its descendants as `~` / `~/...`; otherwise show full path.
+  function displayCwd() {
+    if (cwd === HOME) return "~";
+    if (cwd.startsWith(HOME + "/")) return "~" + cwd.slice(HOME.length);
+    return cwd;
+  }
 
   // path utilities
   function split(p) { return p.split("/").filter(Boolean); }
@@ -216,7 +412,7 @@
     if (!p) return cwd;
     let parts;
     if (p.startsWith("/")) parts = split(p);
-    else if (p === "~" || p.startsWith("~/")) parts = split(p.slice(1));
+    else if (p === "~" || p.startsWith("~/")) parts = [...split(HOME), ...split(p.slice(1))];
     else parts = [...split(cwd), ...split(p)];
     const out = [];
     for (const s of parts) {
@@ -304,11 +500,11 @@
   }
 
   function pwd() {
-    return [{ kind: "text", text: cwd === "/" ? "/home/jeongin" : "/home/jeongin" + cwd }];
+    return [{ kind: "text", text: cwd }];
   }
 
   function cd(args) {
-    const target = args[0] || "/";
+    const target = args[0] || "~";  // bare `cd` → home
     if (target === "-") return [{ kind: "text", text: "cd: OLDPWD not set", warn: true }];
     const { path, node } = resolve(target);
     if (!node) return [{ kind: "text", text: `cd: ${target}: No such file or directory`, warn: true }];
@@ -383,5 +579,138 @@
     return lines;
   }
 
-  window.FS = { root, getCwd, setCwd, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, complete };
+  // Playful one-liner appended when the search term is one of these.
+  const FIND_QUIPS = {
+    love:      { en: "love: not indexed. try 'chat'.",                  ko: "love: 색인에 없음. 'chat' 써보세요." },
+    happiness: { en: "happiness: see /home/jeongin/coffee.log",          ko: "happiness: /home/jeongin/coffee.log 참고." },
+    meaning:   { en: "meaning: resolve at runtime.",                     ko: "meaning: 런타임에 해석됩니다." },
+    truth:     { en: "truth: recursive — watch for cycles.",             ko: "truth: 재귀적. 순환 주의." },
+    sleep:     { en: "sleep: deprecated since grad school.",             ko: "sleep: 대학원 이후 deprecated." },
+  };
+  const GREP_QUIPS = {
+    love:        { en: "— love: still not regex-able after all these years.", ko: "— love: 여전히 정규식으로 잡히지 않음." },
+    happiness:   { en: "— happiness: compile something small, watch it run.", ko: "— happiness: 작은 프로그램 컴파일하고 돌아가는 걸 보세요." },
+    meaning:     { en: "— meaning: requires more than a pattern.",            ko: "— meaning: 패턴만으론 부족." },
+    truth:       { en: "— truth: assumed. do not grep.",                      ko: "— truth: 전제됨. grep 하지 마세요." },
+    sleep:       { en: "— sleep: scheduled after submission deadline.",       ko: "— sleep: 마감 이후로 예약됨." },
+    "free-time": { en: "— free-time: deallocated.",                           ko: "— free-time: 해제됨." },
+  };
+
+  // find: walk tree under <path> (or cwd), print matching entries.
+  //   find                 — everything under cwd
+  //   find /etc            — everything under /etc
+  //   find . -name "*.md"  — filter by name glob
+  //   find / -name secret* — glob works without quotes too
+  function find(args, lang) {
+    const L = (lang === "en" ? "en" : "ko");
+    const { flags, rest } = parseArgs(args);
+    let start = rest[0] && !rest[0].startsWith("-") ? rest[0] : cwd;
+    let pattern = null;
+    const nameIdx = args.indexOf("-name");
+    if (nameIdx >= 0 && args[nameIdx + 1]) pattern = args[nameIdx + 1].replace(/^["']|["']$/g, "");
+    // `find love` (single bare arg that doesn't look like a path) → treat as name pattern.
+    const bareTerm = rest.length === 1 && nameIdx < 0 && !rest[0].startsWith("/") && !rest[0].startsWith(".") && !rest[0].startsWith("~");
+    if (bareTerm) { pattern = rest[0]; start = cwd; }
+
+    const { path: startPath, node } = resolve(start);
+    if (!node) return [{ kind: "text", text: `find: ${start}: No such file or directory`, warn: true }];
+
+    const showHidden = flags.has("a") || (pattern && pattern.startsWith("."));
+    const re = pattern ? globToRegex(pattern) : null;
+    const results = [];
+
+    function walk(n, p) {
+      const name = p === "/" ? "/" : p.slice(p.lastIndexOf("/") + 1);
+      if (!re || re.test(name)) results.push(p);
+      if (n.type !== "dir") return;
+      for (const [cn, ch] of Object.entries(n.children)) {
+        if (!showHidden && (cn.startsWith(".") || ch.hidden)) continue;
+        walk(ch, p === "/" ? "/" + cn : p + "/" + cn);
+      }
+    }
+    walk(node, startPath);
+
+    const qObj = pattern ? FIND_QUIPS[pattern.toLowerCase()] : null;
+    const quip = qObj ? (qObj[L] || qObj.en) : null;
+    const MAX = 200;
+    const out = [];
+    if (!results.length) out.push({ kind: "text", text: "(no matches)", dim: true });
+    else {
+      results.slice(0, MAX).forEach(p => out.push({ kind: "text", text: p }));
+      if (results.length > MAX) out.push({ kind: "text", text: `(truncated: ${results.length - MAX} more)`, dim: true });
+    }
+    if (quip) out.push({ kind: "text", text: quip, dim: true });
+    return out;
+  }
+
+  // grep: search file contents under <path> (recursive by default).
+  //   grep <pattern>              — search under cwd
+  //   grep <pattern> <path>       — search under <path>
+  //   grep -i <pattern> <path>    — case insensitive
+  //   grep -n <pattern> <path>    — show line numbers
+  function grep(args, lang) {
+    const L = (lang === "en" ? "en" : "ko");
+    const { flags, rest } = parseArgs(args);
+    if (rest.length < 1) return [{ kind: "text", text: "usage: grep [-i] [-n] <pattern> [path]", warn: true }];
+    const pattern = rest[0];
+    const target = rest[1] || cwd;
+    const caseInsensitive = flags.has("i");
+    const showLine = flags.has("n");
+
+    const { path: rootPath, node } = resolve(target);
+    if (!node) return [{ kind: "text", text: `grep: ${target}: No such file or directory`, warn: true }];
+
+    let re;
+    try { re = new RegExp(pattern, caseInsensitive ? "i" : ""); }
+    catch { re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), caseInsensitive ? "i" : ""); }
+
+    const results = [];
+    function grepFile(f, p) {
+      if (!f.content) return;
+      f.content.forEach((line, i) => {
+        if (re.test(line)) {
+          const prefix = showLine ? `${p}:${i + 1}: ` : `${p}: `;
+          results.push(prefix + line);
+        }
+      });
+    }
+    function walk(n, p) {
+      if (n.type === "file") grepFile(n, p);
+      else if (n.type === "dir") {
+        for (const [cn, ch] of Object.entries(n.children)) {
+          if (cn.startsWith(".") && !flags.has("a") && !ch.hidden) { /* visible dotdir: still walk */ }
+          walk(ch, p === "/" ? "/" + cn : p + "/" + cn);
+        }
+      }
+    }
+    walk(node, rootPath);
+
+    const qObj = GREP_QUIPS[pattern.toLowerCase()];
+    const quip = qObj ? (qObj[L] || qObj.en) : null;
+    const MAX = 200;
+    const out = [];
+    if (!results.length) out.push({ kind: "text", text: "(no matches)", dim: true });
+    else {
+      results.slice(0, MAX).forEach(l => out.push({ kind: "text", text: l }));
+      if (results.length > MAX) out.push({ kind: "text", text: `(truncated: ${results.length - MAX} more)`, dim: true });
+    }
+    if (quip) out.push({ kind: "text", text: quip, dim: true });
+    return out;
+  }
+
+  function globToRegex(glob) {
+    const esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+                    .replace(/\*/g, ".*")
+                    .replace(/\?/g, ".");
+    return new RegExp("^" + esc + "$");
+  }
+
+  // Validate stored cwd against the current tree — if it points to a path
+  // that no longer exists (old structure, renamed dir, etc.), reset to HOME.
+  if (!resolve(cwd).node) {
+    cwd = HOME;
+    try { localStorage.setItem(CWD_KEY, HOME); } catch {}
+  }
+
+  window.FS = { root, getCwd, setCwd, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, find, grep, complete };
 })();

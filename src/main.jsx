@@ -24,7 +24,7 @@ const TWEAKS_DEFAULT = {
 };
 
 const BOOT_LINES = [
-  "[    0.000] Booting JeonginOS 25.04 (jeongin-kernel 6.10-coffee)",
+  "[    0.000] Booting JIKOS 25.04 (jik-kernel 6.10-coffee)",
   "[    0.003] BIOS: 99jik Research Labs v4.2",
   "[    0.012] Memory: 16384 MB -- 12288 MB reserved for coffee cache",
   "[    0.034] CPU0: CaffeinatedCore(TM) i99-2026K @ 4.2 GHz",
@@ -200,6 +200,13 @@ function App() {
     window.addEventListener("message", onMsg);
     try { window.parent.postMessage({ type: "__edit_mode_available" }, "*"); } catch {}
     return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  // `reboot` easter egg → replay the boot sequence on demand.
+  React.useEffect(() => {
+    const onReboot = () => setBootDone(false);
+    window.addEventListener("site-reboot", onReboot);
+    return () => window.removeEventListener("site-reboot", onReboot);
   }, []);
 
   return (
