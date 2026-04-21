@@ -1,6 +1,7 @@
 {
-  "updated": "2026-04-20T08:00:00+09:00",
-  "source": "placeholder",
-  "note": "Replaced hourly by .github/workflows/calendar.yml — see scripts/fetch-calendar.mjs",
+  "updated": "2026-04-21T20:15:12.525Z",
+  "source": "google-calendar-ical",
+  "horizon_days": 45,
+  "count": 0,
   "events": []
 }
