@@ -1,7 +1,15 @@
 {
-  "updated": "2026-04-22T20:16:32.064Z",
+  "updated": "2026-04-23T20:17:08.699Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 0,
-  "events": []
+  "count": 1,
+  "events": [
+    {
+      "start": "2026-04-24T16:45:00+09:00",
+      "end": "2026-04-24T17:00:00+09:00",
+      "title": "IT1-613 키 불출",
+      "location": "",
+      "tag": "other"
+    }
+  ]
 }
