@@ -13,6 +13,7 @@ window.SITE_DATA = {
     cvPath: "/cv/JeonginKim-CV.pdf",                 // CV download path
     copyrightYear: 2026,                             // footer © year
     updatedLabel: { en: "Apr 2026", ko: "2026년 4월" }, // banner / `now` header
+    gaTagId: "G-4MY31MY2XZ",                          // GA4 measurement ID (empty string disables)
   },
 
   profile: {

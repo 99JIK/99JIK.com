@@ -11,6 +11,7 @@ import "./fs.js";
 import "./calendar.js";
 import "./eggs.js";
 import "./crisp.js";
+import "./analytics.js";
 import "./terminal-commands.js";
 
 import { TerminalView } from "./terminal-view.jsx";
