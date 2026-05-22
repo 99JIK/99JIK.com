@@ -1,15 +1,7 @@
 {
-  "updated": "2026-05-21T20:31:34.747Z",
+  "updated": "2026-05-22T20:30:21.275Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 1,
-  "events": [
-    {
-      "start": "2026-05-20T23:00:00Z",
-      "end": "2026-05-21T03:00:00Z",
-      "title": "토스 고유가 피해지원금 신청",
-      "location": "",
-      "tag": "other"
-    }
-  ]
+  "count": 0,
+  "events": []
 }
