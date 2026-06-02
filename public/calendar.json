@@ -1,7 +1,22 @@
 {
-  "updated": "2026-06-01T21:09:37.851Z",
+  "updated": "2026-06-02T20:58:42.459Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 0,
-  "events": []
+  "count": 2,
+  "events": [
+    {
+      "start": "2026-06-02T12:00:00+09:00",
+      "end": "2026-06-02T12:00:00+09:00",
+      "title": "멘토 퇴근",
+      "location": "",
+      "tag": "teach"
+    },
+    {
+      "start": "2026-06-02T13:00:00+09:00",
+      "end": "2026-06-02T13:00:00+09:00",
+      "title": "멘토 출근",
+      "location": "",
+      "tag": "teach"
+    }
+  ]
 }
