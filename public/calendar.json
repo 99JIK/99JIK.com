@@ -1,16 +1,9 @@
 {
-  "updated": "2026-06-22T20:57:58.200Z",
+  "updated": "2026-06-23T20:39:46.654Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 3,
+  "count": 2,
   "events": [
-    {
-      "start": "2026-06-23T04:30:00Z",
-      "end": "2026-06-23T05:00:00Z",
-      "title": "[DYETEC] 회의",
-      "location": "다이텍연구원, 대한민국 대구광역시 서구 평리6동 달서천로 92",
-      "tag": "other"
-    },
     {
       "start": "2026-06-24T00:00:00+09:00",
       "end": "2026-06-27T00:00:00+09:00",
