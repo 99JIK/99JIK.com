@@ -1,16 +1,9 @@
 {
-  "updated": "2026-06-24T20:30:58.476Z",
+  "updated": "2026-06-25T20:36:06.741Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 2,
+  "count": 1,
   "events": [
-    {
-      "start": "2026-06-24T00:00:00+09:00",
-      "end": "2026-06-27T00:00:00+09:00",
-      "title": "Stay at W Ocean Pension",
-      "location": "서귀포시 대포로 32-4, 제주, 대한민국, 63544",
-      "tag": "teach"
-    },
     {
       "start": "2026-06-24T00:00:00Z",
       "end": "2026-06-24T02:00:00Z",
