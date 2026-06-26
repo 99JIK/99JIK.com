@@ -1,15 +1,7 @@
 {
-  "updated": "2026-06-25T20:36:06.741Z",
+  "updated": "2026-06-26T20:30:28.165Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 1,
-  "events": [
-    {
-      "start": "2026-06-24T00:00:00Z",
-      "end": "2026-06-24T02:00:00Z",
-      "title": "KCC2026 O5-02",
-      "location": "제주국제컨벤션센터(제주특별자치도 서귀포시 중문관광로 224)",
-      "tag": "other"
-    }
-  ]
+  "count": 0,
+  "events": []
 }
