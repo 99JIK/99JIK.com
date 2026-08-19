@@ -1,7 +1,22 @@
 {
-  "updated": "2026-08-18T20:09:48.445Z",
+  "updated": "2026-08-19T20:12:35.593Z",
   "source": "google-calendar-ical",
   "horizon_days": 45,
-  "count": 0,
-  "events": []
+  "count": 2,
+  "events": [
+    {
+      "start": "2026-08-20T09:30:00Z",
+      "end": "2026-08-20T11:30:00Z",
+      "title": "ABB 워크샵",
+      "location": "바르미호텔인터불고 대구(대구 수성구 팔현길 212)",
+      "tag": "other"
+    },
+    {
+      "start": "2026-08-27T03:00:00Z",
+      "end": "2026-08-27T04:00:00Z",
+      "title": "ABB 특강",
+      "location": "",
+      "tag": "other"
+    }
+  ]
 }
