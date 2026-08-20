@@ -5,6 +5,8 @@
   const CWD_KEY = "99jik:cwd:v2"; // bumped: layout moved under /home/jeongin
   const HOME = "/home/jeongin";
 
+  const store = window.PREFS.store;  // guarded localStorage, see prefs.js
+
   // Build the tree. Files carry { type, size, mtime, content } where content is an
   // array of text blocks returned by `cat`.
   function buildTree() {
@@ -43,7 +45,7 @@
           `# ${r.title_en}`,
           `tag: ${r.tag}`,
           "",
-          r.blurb,
+          r.blurb_en,
         ],
       };
     });
@@ -57,7 +59,7 @@
           content: [
             `${D.profile.name_en} (${D.profile.name_ko})`,
             `${D.profile.role_en} -- ${D.profile.affiliation_en}`,
-            `${D.profile.location}`,
+            `${D.profile.location_en}`,
             "",
             "I work at the intersection of software testing and language models.",
             "Teaching both sides to reason about correctness together.",
@@ -84,11 +86,13 @@
         },
         "now.log": {
           type: "file", size: 128, mtime: dayAgo(0),
-          content: D.now.map((n, i) => `[${new Date(now - i*3600000).toISOString().slice(0,16).replace("T"," ")}] ${n}`),
+          content: D.now.length
+            ? D.now.map((n, i) => `[${new Date(now - i*3600000).toISOString().slice(0,16).replace("T"," ")}] ${n}`)
+            : ["(empty)"],
         },
         "cv.pdf": {
           type: "file", size: 248320, mtime: dayAgo(21),
-          content: ["(binary -- use 'cv' command to download CV.pdf)"],
+          content: ["(binary -- run `cv` for the Korean and English PDFs)"],
         },
         ".secret_todo": {
           type: "file", size: 64, mtime: dayAgo(0), hidden: true,
@@ -96,8 +100,8 @@
             "# secret TODO",
             "- [ ] finish SLM fuzzer prototype",
             "- [ ] reply to advisor's email (3 days and counting)",
-            "- [x] caffeinate",
-            "- [ ] sleep (impossible sprint)",
+            "- [x] rerun the Q5 comparison with a fixed seed",
+            "- [ ] write up the oracle-confidence idea before it evaporates",
           ],
         },
         ".lab": {
@@ -185,10 +189,6 @@
             "an LLM that says 'I don't know' when it doesn't.",
           ],
         },
-        "coffee.log": {
-          type: "file", size: 0, mtime: dayAgo(0),
-          content: ["(empty. typical.)"],
-        },
         "til": {
           type: "link", target: D.site.tilUrl, mtime: dayAgo(1), size: 22,
           content: [`symlink -> ${D.site.tilUrl}`],
@@ -220,56 +220,51 @@
               content: [D.site.handle],
             },
             "motd": {
-              type: "file", size: 680, mtime: dayAgo(30),
+              type: "file", size: 720, mtime: dayAgo(30),
               content: [
-                `=== Welcome to ${D.site.handle} ===`,
+                `=== ${D.site.handle} ===`,
                 "",
-                `${D.profile.name_en}'s playful portfolio machine.`,
+                `${D.profile.name_en} -- ${D.profile.role_en}, ${D.profile.affiliation_en}`,
                 "",
-                "## getting around",
-                "  cd ~            browse my stuff (/home/jeongin)",
-                "  cd /            see the whole machine",
-                "  ls -a           hidden files (there's more than you think)",
-                "  tree            full layout at a glance",
-                "  help  or  ?     full command list",
+                "## the site",
+                "  about  research  projects  publications  experience  skills",
+                "  now             calendar, synced from Google Calendar",
+                "  cv              resume, Korean and English",
+                "  chat            message me; it reaches my phone",
                 "",
-                "## say hi",
-                "  su <name>       switch user (exit to go back)",
-                "  chat            message me live",
+                "## the shell",
+                "  cd ~            my files live under /home/jeongin",
+                "  cd /            the whole tree",
+                "  ls -a           hidden entries (there are more than you think)",
+                "  tree            layout at a glance",
+                "  find / grep     search names and contents (-a includes hidden)",
+                "  head tail wc    the usual text tools; pipes work",
+                "  man <cmd>       usage for any command here",
+                "  help  or  ?     everything at once",
                 "",
-                "## some fun",
-                "  coffee          fuel",
-                "  fortune         testing-flavored quotes",
-                "  weather         check the sky over daegu",
-                "  cowsay hello    moo",
-                "  top             processes running in my head",
-                "",
-                "## for the curious",
-                "  unix jokes exist. try what you know.",
-                "  keyboard secrets too  (^ ^ v v < > < > ...)",
-                "  some folders pretend to be empty.",
-                "",
-                "that's a start. the rest — poke around.",
+                "This filesystem is real: du, df and ls -l are computed from the same",
+                "tree, so they agree. It is mounted read-only, so writes fail honestly.",
               ],
             },
             "os-release": {
-              type: "file", size: 180, mtime: dayAgo(60),
+              type: "file", size: 200, mtime: dayAgo(60),
               content: [
                 `NAME="JIKOS"`,
-                `VERSION="25.04 (caffeinated)"`,
+                `VERSION="1.0 (${D.site.handle})"`,
+                `VERSION_ID="1.0"`,
                 `ID=jikos`,
-                `PRETTY_NAME="JIKOS 25.04 (caffeinated)"`,
+                `PRETTY_NAME="JIKOS 1.0"`,
                 `HOME_URL="https://${D.site.domain}"`,
-                `SUPPORT_URL="type 'chat'"`,
+                `SUPPORT_URL="https://${D.site.domain}"`,
               ],
             },
             "passwd": {
               type: "file", size: 160, mtime: dayAgo(400),
               content: [
                 "# partial — only the interesting accounts",
-                "jeongin:x:1000:1000:Master's candidate:/home/jeongin:/bin/zsh",
+                "jeongin:x:1000:1000:Master's candidate:/home/jeongin:/bin/bash",
                 "stlab:x:1001:1001:Software Testing Lab:/home/stlab:/bin/bash",
-                "memo:x:1002:1002:scratchpad:/home/memo:/bin/zsh",
+                "memo:x:1002:1002:scratchpad:/home/memo:/bin/bash",
               ],
             },
           },
@@ -346,7 +341,7 @@
                   type: "file", size: 60, mtime: dayAgo(300),
                   content: [
                     "main: IT-5 523",
-                    "coffee: the hallway vending machine (tragic)",
+                    "seminar: IT-5 403 (whiteboard sessions)",
                   ],
                 },
               },
@@ -391,11 +386,11 @@
   function root() { if (!ROOT) ROOT = buildTree(); return ROOT; }
 
   // cwd is an absolute path string like "/home/jeongin" or "/etc".
-  let cwd = localStorage.getItem(CWD_KEY) || HOME;
+  let cwd = store.get(CWD_KEY) || HOME;
   function getCwd() { return cwd; }
   function setCwd(p) {
     cwd = normalize(p);
-    localStorage.setItem(CWD_KEY, cwd);
+    store.set(CWD_KEY, cwd);
     window.dispatchEvent(new CustomEvent("promptpath"));
   }
   // Display: render HOME and its descendants as `~` / `~/...`; otherwise show full path.
@@ -449,25 +444,25 @@
   }
 
   // ls: supports -a -l -r -t -h (and combos like -alrt)
-  function ls(args) {
+  function ls(args, piped) {
     const { flags, rest } = parseArgs(args);
     const target = rest[0] || cwd;
     const { path, node } = resolve(target);
     if (!node) return [{ kind: "text", text: `ls: ${target}: No such file or directory`, warn: true }];
     if (node.type === "file" || node.type === "link") {
-      return formatLs([[basename(path), node]], path, flags);
+      return formatLs([[basename(path), node]], path, flags, piped);
     }
     let entries = Object.entries(node.children);
     if (!flags.has("a")) entries = entries.filter(([n, e]) => !n.startsWith(".") && !e.hidden);
     if (flags.has("t")) entries.sort((a, b) => b[1].mtime - a[1].mtime);
     else entries.sort((a, b) => a[0].localeCompare(b[0]));
     if (flags.has("r")) entries.reverse();
-    return formatLs(entries, path, flags);
+    return formatLs(entries, path, flags, piped);
   }
 
   function basename(p) { return p === "/" ? "/" : p.slice(p.lastIndexOf("/") + 1); }
 
-  function formatLs(entries, dirPath, flags) {
+  function formatLs(entries, dirPath, flags, piped) {
     const blocks = [];
     if (flags.has("l")) {
       const totalBlocks = entries.reduce((s, [, e]) => s + Math.ceil((e.size || 0) / 512), 0);
@@ -478,12 +473,29 @@
         const when = fmtTime(e.mtime);
         const display = e.type === "dir" ? name + "/" : e.type === "link" ? `${name} -> ${e.target}` : name;
         const line = `${mode}  1 jeongin  staff ${size} ${when} ${display}`;
-        blocks.push({ kind: "text", text: line, dim: e.hidden });
+        blocks.push({
+          kind: "text", text: line, dim: e.hidden,
+          parts: [
+            { t: `${mode}  1 jeongin  staff ${size} ${when} `, c: "meta" },
+            { t: display, c: e.type === "dir" ? "dir" : e.type === "link" ? "link" : null },
+          ],
+        });
       }
     } else {
-      // columnar
-      const names = entries.map(([n, e]) => e.type === "dir" ? n + "/" : e.type === "link" ? n + "@" : n);
-      blocks.push({ kind: "text", text: names.join("  ") || "(empty)" });
+      const decorate = ([n, e]) => ({
+        t: e.type === "dir" ? n + "/" : e.type === "link" ? n + "@" : n,
+        // Same convention as ls --color: directories blue, symlinks cyan, hidden dim.
+        c: e.type === "dir" ? "dir" : e.type === "link" ? "link" : (n.startsWith(".") || e.hidden) ? "faint" : null,
+      });
+      // Real ls goes one-per-line when stdout is not a tty, which is what makes
+      // `ls | wc -l` mean anything.
+      if (piped) entries.forEach(en => { const d = decorate(en); blocks.push({ kind: "text", text: d.t, parts: [d] }); });
+      else if (!entries.length) blocks.push({ kind: "text", text: "(empty)", dim: true });
+      else {
+        const parts = [];
+        entries.forEach((en, i) => { if (i) parts.push({ t: "  " }); parts.push(decorate(en)); });
+        blocks.push({ kind: "text", text: parts.map(p => p.t).join(""), parts });
+      }
     }
     return blocks;
   }
@@ -514,14 +526,21 @@
   }
 
   function cat(args) {
-    if (!args.length) return [{ kind: "text", text: "cat: missing operand", warn: true }];
+    const { flags, rest } = parseArgs(args);
+    if (!rest.length) return [{ kind: "text", text: "cat: missing operand", warn: true }];
+    const number = flags.has("n") || flags.has("b");   // -b skips blank lines
+    let lineNo = 0;
     const out = [];
-    for (const a of args) {
+    for (const a of rest) {
       const { path, node } = resolve(a);
       if (!node) { out.push({ kind: "text", text: `cat: ${a}: No such file or directory`, warn: true }); continue; }
       if (node.type === "dir") { out.push({ kind: "text", text: `cat: ${a}: Is a directory`, warn: true }); continue; }
       if (node.type === "link") { out.push({ kind: "link", href: node.target, text: node.content[0] }); continue; }
-      node.content.forEach(line => out.push({ kind: "text", text: line }));
+      node.content.forEach(line => {
+        if (!number) return out.push({ kind: "text", text: line });
+        if (flags.has("b") && !String(line).trim()) return out.push({ kind: "text", text: line });
+        out.push({ kind: "text", text: String(++lineNo).padStart(6) + "	" + line });
+      });
     }
     return out;
   }
@@ -579,37 +598,25 @@
     return lines;
   }
 
-  // Playful one-liner appended when the search term is one of these.
-  const FIND_QUIPS = {
-    love:      { en: "love: not indexed. try 'chat'.",                  ko: "love: 색인에 없음. 'chat' 써보세요." },
-    happiness: { en: "happiness: see /home/jeongin/coffee.log",          ko: "happiness: /home/jeongin/coffee.log 참고." },
-    meaning:   { en: "meaning: resolve at runtime.",                     ko: "meaning: 런타임에 해석됩니다." },
-    truth:     { en: "truth: recursive — watch for cycles.",             ko: "truth: 재귀적. 순환 주의." },
-    sleep:     { en: "sleep: deprecated since grad school.",             ko: "sleep: 대학원 이후 deprecated." },
-  };
-  const GREP_QUIPS = {
-    love:        { en: "— love: still not regex-able after all these years.", ko: "— love: 여전히 정규식으로 잡히지 않음." },
-    happiness:   { en: "— happiness: compile something small, watch it run.", ko: "— happiness: 작은 프로그램 컴파일하고 돌아가는 걸 보세요." },
-    meaning:     { en: "— meaning: requires more than a pattern.",            ko: "— meaning: 패턴만으론 부족." },
-    truth:       { en: "— truth: assumed. do not grep.",                      ko: "— truth: 전제됨. grep 하지 마세요." },
-    sleep:       { en: "— sleep: scheduled after submission deadline.",       ko: "— sleep: 마감 이후로 예약됨." },
-    "free-time": { en: "— free-time: deallocated.",                           ko: "— free-time: 해제됨." },
-  };
-
   // find: walk tree under <path> (or cwd), print matching entries.
   //   find                 — everything under cwd
   //   find /etc            — everything under /etc
   //   find . -name "*.md"  — filter by name glob
   //   find / -name secret* — glob works without quotes too
-  function find(args, lang) {
-    const L = (lang === "en" ? "en" : "ko");
-    const { flags, rest } = parseArgs(args);
-    let start = rest[0] && !rest[0].startsWith("-") ? rest[0] : cwd;
+  function find(args) {
+    // Pull `-name <pattern>` out before parseArgs. That helper splits any -xyz into
+    // single-char flags, so -name used to set the `a` flag as a side effect (hidden
+    // files always shown) and leave the pattern sitting in rest[0] as a bogus start path.
+    const argv = [];
     let pattern = null;
-    const nameIdx = args.indexOf("-name");
-    if (nameIdx >= 0 && args[nameIdx + 1]) pattern = args[nameIdx + 1].replace(/^["']|["']$/g, "");
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "-name" && args[i + 1] !== undefined) pattern = args[++i].replace(/^["']|["']$/g, "");
+      else argv.push(args[i]);
+    }
+    const { flags, rest } = parseArgs(argv);
+    let start = rest[0] || cwd;
     // `find love` (single bare arg that doesn't look like a path) → treat as name pattern.
-    const bareTerm = rest.length === 1 && nameIdx < 0 && !rest[0].startsWith("/") && !rest[0].startsWith(".") && !rest[0].startsWith("~");
+    const bareTerm = !pattern && rest.length === 1 && !rest[0].startsWith("/") && !rest[0].startsWith(".") && !rest[0].startsWith("~");
     if (bareTerm) { pattern = rest[0]; start = cwd; }
 
     const { path: startPath, node } = resolve(start);
@@ -630,8 +637,6 @@
     }
     walk(node, startPath);
 
-    const qObj = pattern ? FIND_QUIPS[pattern.toLowerCase()] : null;
-    const quip = qObj ? (qObj[L] || qObj.en) : null;
     const MAX = 200;
     const out = [];
     if (!results.length) out.push({ kind: "text", text: "(no matches)", dim: true });
@@ -639,7 +644,6 @@
       results.slice(0, MAX).forEach(p => out.push({ kind: "text", text: p }));
       if (results.length > MAX) out.push({ kind: "text", text: `(truncated: ${results.length - MAX} more)`, dim: true });
     }
-    if (quip) out.push({ kind: "text", text: quip, dim: true });
     return out;
   }
 
@@ -648,27 +652,35 @@
   //   grep <pattern> <path>       — search under <path>
   //   grep -i <pattern> <path>    — case insensitive
   //   grep -n <pattern> <path>    — show line numbers
-  function grep(args, lang) {
-    const L = (lang === "en" ? "en" : "ko");
+  //   grep -a <pattern> <path>    — include hidden files
+  function grep(args, lang, stdin) {
     const { flags, rest } = parseArgs(args);
-    if (rest.length < 1) return [{ kind: "text", text: "usage: grep [-i] [-n] <pattern> [path]", warn: true }];
+    if (rest.length < 1) return [{ kind: "text", text: "usage: grep [-i] [-n] [-a] [-v] <pattern> [path]", warn: true }];
     const pattern = rest[0];
     const target = rest[1] || cwd;
-    const caseInsensitive = flags.has("i");
     const showLine = flags.has("n");
+
+    let re;
+    try { re = new RegExp(pattern, flags.has("i") ? "i" : ""); }
+    catch { re = new RegExp(escapeRe(pattern), flags.has("i") ? "i" : ""); }
+    const hit = (line) => re.test(line) !== flags.has("v");
+
+    // Downstream of a pipe grep filters stdin and ignores path operands, same as
+    // the real thing reading from a pipe instead of walking a tree.
+    if (stdin) {
+      const out = stdin.filter(hit)
+        .map((l, i) => ({ kind: "text", text: showLine ? `${i + 1}: ${l}` : (l || " ") }));
+      return out.length ? out : [{ kind: "text", text: "(no matches)", dim: true }];
+    }
 
     const { path: rootPath, node } = resolve(target);
     if (!node) return [{ kind: "text", text: `grep: ${target}: No such file or directory`, warn: true }];
-
-    let re;
-    try { re = new RegExp(pattern, caseInsensitive ? "i" : ""); }
-    catch { re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), caseInsensitive ? "i" : ""); }
 
     const results = [];
     function grepFile(f, p) {
       if (!f.content) return;
       f.content.forEach((line, i) => {
-        if (re.test(line)) {
+        if (hit(line)) {
           const prefix = showLine ? `${p}:${i + 1}: ` : `${p}: `;
           results.push(prefix + line);
         }
@@ -678,15 +690,15 @@
       if (n.type === "file") grepFile(n, p);
       else if (n.type === "dir") {
         for (const [cn, ch] of Object.entries(n.children)) {
-          if (cn.startsWith(".") && !flags.has("a") && !ch.hidden) { /* visible dotdir: still walk */ }
+          // -a to include hidden, matching ls/find/tree. Without it the .lab and
+          // .midnight drafts would surface in plain `grep <word> /`.
+          if (!flags.has("a") && (cn.startsWith(".") || ch.hidden)) continue;
           walk(ch, p === "/" ? "/" + cn : p + "/" + cn);
         }
       }
     }
     walk(node, rootPath);
 
-    const qObj = GREP_QUIPS[pattern.toLowerCase()];
-    const quip = qObj ? (qObj[L] || qObj.en) : null;
     const MAX = 200;
     const out = [];
     if (!results.length) out.push({ kind: "text", text: "(no matches)", dim: true });
@@ -694,9 +706,10 @@
       results.slice(0, MAX).forEach(l => out.push({ kind: "text", text: l }));
       if (results.length > MAX) out.push({ kind: "text", text: `(truncated: ${results.length - MAX} more)`, dim: true });
     }
-    if (quip) out.push({ kind: "text", text: quip, dim: true });
     return out;
   }
+
+  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
   function globToRegex(glob) {
     const esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -709,7 +722,7 @@
   // that no longer exists (old structure, renamed dir, etc.), reset to HOME.
   if (!resolve(cwd).node) {
     cwd = HOME;
-    try { localStorage.setItem(CWD_KEY, HOME); } catch {}
+    store.set(CWD_KEY, HOME);
   }
 
   window.FS = { root, getCwd, setCwd, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, find, grep, complete };

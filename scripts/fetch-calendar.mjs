@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/fetch-calendar.mjs
 // Pulls the iCal secret URL, filters private events, writes public/calendar.json.
-// Run by .github/workflows/calendar.yml hourly.
+// Run by .github/workflows/calendar.yml once a day (20:00 UTC / 05:00 KST).
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";

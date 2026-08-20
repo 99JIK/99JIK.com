@@ -1,64 +1,25 @@
-// TerminalView — viewport-locked. Inner body scrolls; prompt stays at bottom.
-// Supports bilingual (ko/en) and an in-terminal chat mode.
+// TerminalView. The prompt is the last line of the scrollback, not a fixed bar, so
+// input and output share one flow the way a real terminal does. Rendering is text
+// only: no cards, no chips, no modal. Bilingual (ko/en) with an in-terminal chat mode.
 
 import * as React from "preact/compat";
+import { ViEditor } from "./vi-editor.jsx";
 
-function Block({ block, onRun, lang }) {
+function Block({ block, lang }) {
   if (block.kind === "text") {
     return (
       <div className={"t-line" + (block.dim ? " dim" : "") + (block.warn ? " warn" : "") + (block.strong ? " strong" : "")}>
-        {block.text || "\u00a0"}
+        {block.text || " "}
       </div>
     );
   }
-  if (block.kind === "progressive") {
-    return <ProgressiveBlock lines={block.lines} delay={block.delay} />;
-  }
-  if (block.kind === "live-top") {
-    return <LiveTopBlock />;
-  }
-  if (block.kind === "weather") {
-    return <WeatherBlock location={block.location} />;
-  }
-  if (block.kind === "now") {
-    return <NowBlock view={block.view} lang={lang} />;
-  }
-  if (block.kind === "kv") {
-    return (
-      <div className="t-kv">
-        {block.rows.map(([k, v], i) => (
-          <div key={i} className="t-kv-row">
-            <span className="t-kv-k">{k}</span>
-            <span className="t-kv-v">{v}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (block.kind === "grid") {
-    return (
-      <div className="t-grid">
-        {block.items.map((p, i) => (
-          <div key={i} className="t-card" onClick={() => onRun && onRun("cat " + p.slug)}>
-            <div className="t-card-h">
-              <span className="t-card-slug">{p.slug}</span>
-              <span className="t-card-year">{p.year}</span>
-            </div>
-            <div className="t-card-title">{lang === "en" ? p.title_en : p.title_ko}</div>
-            <div className="t-card-sum">{lang === "en" ? p.summary_en : p.summary_ko}</div>
-            <div className="t-card-stack">{p.stack.join(" · ")}</div>
-            <div className="t-card-cta">cat {p.slug} →</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  if (block.kind === "weather") return <WeatherBlock location={block.location} />;
+  if (block.kind === "now") return <NowBlock view={block.view} lang={lang} />;
   if (block.kind === "link") {
     return <a className="t-link" href={block.href} target="_blank" rel="noreferrer">{block.text}</a>;
   }
   if (block.kind === "chatmsg") {
     const who = block.role === "user" ? "you" : "jeongin";
-    const colorClass = block.role === "user" ? "chat-user" : "chat-bot";
     const ck = block.contentKind || "text";
     let body;
     if (ck === "image") {
@@ -72,14 +33,12 @@ function Block({ block, onRun, lang }) {
     } else if (ck === "file") {
       body = (
         <a href={block.fileUrl} target="_blank" rel="noreferrer" className="chat-file-link">
-          [file] {block.fileName || "attachment"} ↗
+          [file] {block.fileName || "attachment"}
         </a>
       );
-    } else {
-      body = block.text;
-    }
+    } else body = block.text;
     return (
-      <div className={"chat-msg " + colorClass}>
+      <div className={"chat-msg " + (block.role === "user" ? "chat-user" : "chat-bot")}>
         <span className="chat-who">[{who}]</span>
         <span className="chat-body">{body}</span>
         {block.pending && <span className="chat-pending"> ...</span>}
@@ -89,33 +48,71 @@ function Block({ block, onRun, lang }) {
   return null;
 }
 
+// PS1. Bash renders `user@host:path$ `, so the pieces are spans of one line rather
+// than a laid-out row.
+function Ps1({ user, host, path, chat }) {
+  if (chat) return <span className="t-ps1"><span className="t-ps1-user">chat</span><span className="t-ps1-punct">&gt; </span></span>;
+  return (
+    <span className="t-ps1">
+      <span className="t-ps1-user">{user}@{host}</span>
+      <span className="t-ps1-punct">:</span>
+      <span className="t-ps1-path">{path}</span>
+      <span className="t-ps1-punct">$ </span>
+    </span>
+  );
+}
+
+function longestCommonPrefix(list) {
+  if (!list.length) return "";
+  let p = list[0];
+  for (const s of list) {
+    while (!s.startsWith(p)) p = p.slice(0, -1);
+    if (!p) break;
+  }
+  return p;
+}
+
+// Bash prints ambiguous completions into the scrollback in columns, then redraws
+// the prompt. Width is fixed at 80 because that is what the output is designed for.
+function columnize(items, width = 80) {
+  const w = items.reduce((m, s) => Math.max(m, s.length), 0) + 2;
+  const cols = Math.max(1, Math.floor(width / w));
+  const rows = [];
+  for (let i = 0; i < items.length; i += cols) {
+    rows.push(items.slice(i, i + cols).map(s => s.padEnd(w)).join("").trimEnd());
+  }
+  return rows.map(text => ({ kind: "text", text }));
+}
+
 function TerminalView({ onModeChange, onTheme, lang, onLang }) {
   const [history, setHistory] = React.useState([]);
   const [input, setInput] = React.useState("");
+  const [caret, setCaret] = React.useState(0);
   const [cmdStack, setCmdStack] = React.useState([]);
   const [stackIdx, setStackIdx] = React.useState(-1);
-  const [suggestions, setSuggestions] = React.useState([]);
-  const [showHelp, setShowHelp] = React.useState(false);
-  const [typedGhost, setTypedGhost] = React.useState("");
   const [chatOn, setChatOn] = React.useState(false);
   const [promptName, setPromptName] = React.useState(() => (window.getPromptName ? window.getPromptName() : "anonymous"));
   const [promptPath, setPromptPath] = React.useState(() => (window.FS ? window.FS.displayCwd() : "~"));
   const [matrixOn, setMatrixOn] = React.useState(false);
-  const [suAwait, setSuAwait] = React.useState(null); // username being authenticated
+  const [suAwait, setSuAwait] = React.useState(null);   // account being authenticated
+  const [rsearch, setRsearch] = React.useState(null);   // { term, skip } for Alt-R
+  const [vi, setVi] = React.useState(null);             // { path, lines } while vi owns the screen
   const inputRef = React.useRef(null);
   const scrollRef = React.useRef(null);
+  const tabRef = React.useRef(0);      // consecutive Tab presses
+  const statusRef = React.useRef(0);   // $? of the last command
 
-  // Expose command history for the `history` command (read-only mirror).
+  const HOST = window.SITE_DATA.site.handle;
+
   React.useEffect(() => { window.TERM_HISTORY = cmdStack; }, [cmdStack]);
 
-  // su → Password: prompt flow. eggs.js dispatches "su-prompt" for protected users.
+  // su → Password: prompt flow. extras.js dispatches "su-prompt" for protected users.
   React.useEffect(() => {
     const h = (e) => setSuAwait((e && e.detail && e.detail.user) || null);
     window.addEventListener("su-prompt", h);
     return () => window.removeEventListener("su-prompt", h);
   }, []);
 
-  // live prompt name updates (eggs.js dispatches 'promptname')
   React.useEffect(() => {
     const h = () => setPromptName(window.getPromptName ? window.getPromptName() : "anonymous");
     window.addEventListener("promptname", h);
@@ -128,32 +125,21 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
     return () => window.removeEventListener("promptpath", h);
   }, []);
 
-  // Live-chat: surface operator messages + typing indicator into the terminal history.
+  // Live chat: operator messages and typing indicator land in the scrollback.
   React.useEffect(() => {
     const onAgent = (e) => {
       const d = e.detail || {};
       setHistory(h => [
         ...h.filter(x => !(x.type === "chatline" && x.pending)),
-        {
-          type: "chatline",
-          role: "bot",
-          text: d.text,
-          contentKind: d.kind || "text",
-          fileName: d.fileName,
-          fileType: d.fileType,
-          fileUrl: d.fileUrl,
-        },
+        { type: "chatline", role: "bot", text: d.text, contentKind: d.kind || "text",
+          fileName: d.fileName, fileType: d.fileType, fileUrl: d.fileUrl },
       ]);
     };
     const onTyping = (e) => {
       setHistory(h => {
-        const hasPending = h.some(x => x.type === "chatline" && x.pending);
-        if (e.detail.isTyping && !hasPending) {
-          return [...h, { type: "chatline", role: "bot", text: "…", pending: true }];
-        }
-        if (!e.detail.isTyping && hasPending) {
-          return h.filter(x => !(x.type === "chatline" && x.pending));
-        }
+        const pending = h.some(x => x.type === "chatline" && x.pending);
+        if (e.detail.isTyping && !pending) return [...h, { type: "chatline", role: "bot", text: "…", pending: true }];
+        if (!e.detail.isTyping && pending) return h.filter(x => !(x.type === "chatline" && x.pending));
         return h;
       });
     };
@@ -165,330 +151,368 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
     };
   }, []);
 
-  // Konami code listener → unlocks matrix
   React.useEffect(() => {
     const seq = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
     let idx = 0;
     const h = (e) => {
-      const k = e.key;
-      if (k === seq[idx]) {
-        idx++;
-        if (idx === seq.length) {
+      if (e.key === seq[idx]) {
+        if (++idx === seq.length) {
           idx = 0;
           window.KONAMI.unlocked = true;
           setMatrixOn(true);
           setTimeout(() => setMatrixOn(false), 3500);
         }
-      } else {
-        idx = (k === seq[0]) ? 1 : 0;
-      }
+      } else idx = (e.key === seq[0]) ? 1 : 0;
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
 
   const T = lang === "en" ? {
-    emptyAsk: "What would you like to see? Pick one:",
-    suggest: "quick commands →",
-    status: "⏎ run · tab: complete · ? help · ↑↓ history",
-    chatPrompt: "chat ❯",
-    chatEnd: "Chat ended.",
-    youLabel: "you",
-    jeonginLabel: "jeongin",
-    easyBtn: "Easy Mode →",
-    chatClear: "Chat cleared.",
-    chipsLabel: "quick →",
+    chatEnd: "Chat ended.", chatClear: "Chat cleared.",
+    hint: "Type `help` for commands, `about` for the short version.",
+    easyHint: "Prefer a normal page? Type `easy`, or open 99jik.com/?view=easy",
+    lastLogin: (d) => `Last login: ${d} on tty1`,
   } : {
-    emptyAsk: "무엇부터 보여드릴까요? 하나 골라보세요:",
-    suggest: "추천 명령어 →",
-    status: "⏎ 실행 · tab 자동완성 · ? 도움말 · ↑↓ 히스토리",
-    chatPrompt: "채팅 ❯",
-    chatEnd: "채팅을 종료했어요.",
-    youLabel: "나",
-    jeonginLabel: "jeongin",
-    easyBtn: "Easy Mode →",
-    chatClear: "채팅 기록을 비웠어요.",
-    chipsLabel: "추천 →",
+    chatEnd: "채팅을 종료했어요.", chatClear: "채팅 기록을 비웠어요.",
+    hint: "`help` 로 명령 목록, `about` 으로 짧은 소개를 봅니다.",
+    easyHint: "터미널이 낯설면 `easy` 를 입력하세요. 또는 99jik.com/?view=easy",
+    lastLogin: (d) => `마지막 로그인: ${d} (tty1)`,
   };
 
-  // Seed a couple of commands so the screen feels "lived-in" on first load,
-  // instead of a static welcome banner. Re-seeds on lang change.
+  // Seed one command on mount so the screen has content behind the prompt.
+  // Mount only: re-seeding on lang change used to wipe the visitor's scrollback.
   React.useEffect(() => {
     setChatOn(false);
     const path = window.FS ? window.FS.displayCwd() : "~";
-    const seed = ["about", "til"].flatMap(cmd => {
-      const blocks = window.TERMINAL && window.TERMINAL.run ? (window.TERMINAL.run(cmd, lang) || []) : [];
-      return [
-        { type: "prompt", cmd, chat: false, path },
-        { type: "out", blocks: blocks.filter(b => b.kind !== "mode") },
-      ];
-    });
-    setHistory(seed);
+    const blocks = (window.TERMINAL.run("about", lang) || []).filter(b => b.kind !== "mode");
+    setHistory([
+      { type: "prompt", cmd: "about", chat: false, path, user: "anonymous" },
+      { type: "out", blocks },
+    ]);
     setInput("");
-    setSuggestions([]);
-  }, [lang]);
+  }, []);
 
-  // ghost typing animation
-  React.useEffect(() => {
-    if (input) { setTypedGhost(""); return; }
-    const rotating = chatOn
-      ? (lang === "en"
-          ? ["coffee count today?", "how do you exit vim btw", "is the oracle up", "/exit"]
-          : ["오늘 커피 몇 잔이에요?", "vim 어떻게 나가요 진짜로", "논문 잘 써지세요?", "/exit"])
-      : ["about", "projects", "cat sil-harness", "chat", "easy"];
-    let ci = 0, i = 0, dir = 1, tid;
-    const tick = () => {
-      const w = rotating[ci];
-      if (dir === 1) { i++; if (i > w.length) { dir = -1; tid = setTimeout(tick, 1500); return; } }
-      else { i--; if (i <= 0) { dir = 1; ci = (ci + 1) % rotating.length; tid = setTimeout(tick, 400); return; } }
-      setTypedGhost(w.slice(0, i));
-      tid = setTimeout(tick, dir === 1 ? 90 : 40);
-    };
-    tid = setTimeout(tick, 1200);
-    return () => clearTimeout(tid);
-  }, [input, chatOn, lang]);
-
+  // The prompt is the last element in the flow, so any growth means scrolling down.
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [history, suggestions]);
+  }, [history, input, rsearch]);
 
-  // Also auto-scroll when block content grows asynchronously (weather fetch,
-  // progressive lines, live-top refresh, chat reply). Only scroll if the user
-  // was already near the bottom — don't yank them if they scrolled up to read.
   React.useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const inner = el.firstElementChild;
     if (!inner) return;
     const obs = new ResizeObserver(() => {
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (dist < 120) el.scrollTop = el.scrollHeight;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) el.scrollTop = el.scrollHeight;
     });
     obs.observe(inner);
     return () => obs.disconnect();
   }, []);
 
-  const pushOut = (blocks) => setHistory(h => [...h, { type: "out", blocks }]);
-  const pushPrompt = (cmd, path) => setHistory(h => [...h, { type: "prompt", cmd, chat: chatOn, path }]);
   const currentPath = () => (window.FS ? window.FS.displayCwd() : "~");
+  const pushOut = (blocks) => setHistory(h => [...h, { type: "out", blocks }]);
+  const setLine = (v, pos) => {
+    setInput(v);
+    const p = pos === undefined ? v.length : pos;
+    setCaret(p);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) { el.value = v; el.setSelectionRange(p, p); }
+    });
+  };
+
+  // Bash history expansion, the two forms anyone actually types.
+  function expandBang(raw) {
+    const last = cmdStack[cmdStack.length - 1];
+    if (!last) return { text: raw, changed: false };
+    let out = raw;
+    if (/(^|\s)!!(\s|$)/.test(out)) out = out.replace(/!!/g, last);
+    if (/(^|\s)!\$(\s|$)/.test(out)) {
+      const parts = last.trim().split(/\s+/);
+      out = out.replace(/!\$/g, parts[parts.length - 1]);
+    }
+    return { text: out, changed: out !== raw };
+  }
 
   const runCommand = async (raw) => {
-    const cmd = (raw || "").trim();
+    const typed = (raw || "").trim();
 
-    // Password prompt for `su` on protected accounts — always fails.
     if (suAwait) {
       const user = suAwait;
       setSuAwait(null);
-      const path = currentPath();
-      setHistory(h => [
-        ...h,
-        { type: "prompt", cmd: "***", chat: false, path, passwordLine: true },
+      setHistory(h => [...h,
+        { type: "prompt", cmd: "", chat: false, path: currentPath(), user: promptName, password: true },
         { type: "out", blocks: [
-          { kind: "text", text: `su: Authentication failure`, warn: true },
+          { kind: "text", text: "su: Authentication failure", warn: true },
           { kind: "text", text: lang === "en"
-            ? `(wrong password for ${user}. what did you expect.)`
-            : `(${user} 비밀번호 틀림. 뭘 기대하셨나요.)`, dim: true },
+            ? `(no password for ${user} will work; the account is not yours)`
+            : `(${user} 계정은 열리지 않습니다. 본인 계정이 아니니까요)`, dim: true },
         ]},
       ]);
-      setInput("");
+      statusRef.current = 1;
+      setLine("");
       return;
     }
 
-    if (chatOn) return handleChat(cmd);
+    if (chatOn) return handleChat(typed);
 
-    if (!cmd) {
-      pushPrompt("", currentPath());
-      pushOut([{ kind: "text", text: T.emptyAsk, dim: true }]);
-      setSuggestions(window.TERMINAL.EMPTY_SUGGESTIONS);
+    const path = currentPath();
+    const user = promptName;
+    if (!typed) {
+      setHistory(h => [...h, { type: "prompt", cmd: "", chat: false, path, user }]);
+      setLine("");
       return;
     }
-    if (cmd === "?") { setShowHelp(true); return; }
-    setCmdStack(s => [...s, cmd]); setStackIdx(-1);
-    // Snapshot the path BEFORE running the command — `cd` will mutate cwd
-    // and we want the history line to show where the command was typed.
-    const pathAtEntry = currentPath();
-    const blocks = window.TERMINAL.run(cmd, lang);
-    pushPrompt(cmd, pathAtEntry);
+
+    const { text: cmd, changed } = expandBang(typed);
+    setCmdStack(s => [...s, cmd]);
+    setStackIdx(-1);
+    // Bash echoes the expanded line before running it.
+    setHistory(h => [...h, { type: "prompt", cmd: typed, chat: false, path, user },
+                     ...(changed ? [{ type: "out", blocks: [{ kind: "text", text: cmd, dim: true }] }] : [])]);
+
+    const blocks = window.TERMINAL.run(cmd, lang) || [];
     pushOut(blocks);
-    setInput(""); setSuggestions([]);
-    const mode = blocks?.find(b => b.kind === "mode");
+    setLine("");
+
+    const notFound = blocks.some(b => b.kind === "text" && /command not found|명령을 찾지 못했어요/.test(b.text || ""));
+    statusRef.current = notFound ? 127 : blocks.some(b => b.warn) ? 1 : 0;
+
+    const mode = blocks.find(b => b.kind === "mode");
     if (mode) {
       if (mode.action === "clear") setHistory([]);
+      if (mode.action === "history-clear") { setCmdStack([]); setStackIdx(-1); }
       if (mode.action === "easy") onModeChange && onModeChange("easy");
       if (mode.action === "theme") onTheme && onTheme(mode.value);
       if (mode.action === "lang") onLang && onLang(mode.value);
       if (mode.action === "chat") setChatOn(true);
+      if (mode.action === "vi") setVi({ path: mode.path, lines: mode.lines });
       if (mode.action === "matrix") { setMatrixOn(true); setTimeout(() => setMatrixOn(false), 3500); }
     }
   };
 
-  const handleChat = (raw) => {
-    const text = (raw || "").trim();
+  const handleChat = (text) => {
     if (!text) return;
-    if (text === "/exit") {
-      setChatOn(false);
-      setHistory(h => [...h, { type: "prompt", cmd: text, chat: true }, { type: "out", blocks: [{ kind: "text", text: T.chatEnd, dim: true }] }]);
-      setInput(""); return;
+    if (text === "/exit" || text === "/clear") {
+      setHistory(h => [...h, { type: "prompt", cmd: text, chat: true },
+        { type: "out", blocks: [{ kind: "text", text: text === "/exit" ? T.chatEnd : T.chatClear, dim: true }] }]);
+      if (text === "/exit") setChatOn(false);
+      setLine("");
+      return;
     }
-    if (text === "/clear") {
-      setHistory(h => [...h, { type: "prompt", cmd: text, chat: true }, { type: "out", blocks: [{ kind: "text", text: T.chatClear, dim: true }] }]);
-      setInput(""); return;
-    }
-    // Append visitor message + send to backend. Operator reply arrives via livechat-agent-message event.
     setHistory(h => [...h, { type: "chatline", role: "user", text }]);
-    setInput("");
+    setLine("");
     if (window.LIVE_CHAT && window.LIVE_CHAT.send) window.LIVE_CHAT.send(text);
   };
 
+  // ── reverse-i-search (Ctrl-R) ─────────────────────────────────────────────
+  const rmatch = React.useMemo(() => {
+    if (!rsearch) return "";
+    const hits = cmdStack.slice().reverse().filter(c => c.includes(rsearch.term));
+    return hits[Math.min(rsearch.skip, Math.max(0, hits.length - 1))] || "";
+  }, [rsearch, cmdStack]);
+
+  const syncCaret = () => {
+    const el = inputRef.current;
+    if (el) setCaret(el.selectionStart == null ? el.value.length : el.selectionStart);
+  };
+
   const onKey = (e) => {
-    if (e.key === "Enter") { e.preventDefault(); runCommand(input); }
-    else if (e.key === "Tab" && !chatOn) {
+    const el = inputRef.current;
+    const pos = el && el.selectionStart != null ? el.selectionStart : input.length;
+    if (e.key !== "Tab") tabRef.current = 0;
+
+    // Reverse search owns the line while it is open. It lives on Alt-R, not Ctrl-R:
+    // Ctrl-R reloads the page and a web terminal does not get to take that away.
+    if (rsearch) {
+      if (e.key === "Enter") { e.preventDefault(); setRsearch(null); runCommand(rmatch); return; }
+      if (e.key === "Escape") { e.preventDefault(); setRsearch(null); setLine(rmatch); return; }
+      if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); setRsearch(s => ({ ...s, skip: s.skip + 1 })); return; }
+    }
+    if (e.altKey && e.key.toLowerCase() === "r" && !chatOn) {
+      e.preventDefault(); setRsearch({ term: "", skip: 0 }); setLine(""); return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === "c") {
+        // Copy wins when there is a selection. A terminal you cannot copy out of is
+        // broken, and that matters more than SIGINT.
+        const sel = (() => { try { return String(window.getSelection() || ""); } catch { return ""; } })();
+        if (sel.trim()) return;
+        e.preventDefault();                               // otherwise cancel the line
+        setHistory(h => [...h, { type: "prompt", cmd: input + "^C", chat: chatOn, path: currentPath(), user: promptName }]);
+        statusRef.current = 130;
+        setRsearch(null); setLine("");
+        return;
+      }
+      if (k === "l") { e.preventDefault(); setHistory([]); return; }
+      if (k === "a") { e.preventDefault(); setLine(input, 0); return; }
+      if (k === "e") { e.preventDefault(); setLine(input, input.length); return; }
+      if (k === "u") { e.preventDefault(); setLine(input.slice(pos), 0); return; }
+      if (k === "k") { e.preventDefault(); setLine(input.slice(0, pos), pos); return; }
+      // Ctrl-W is reserved by the browser for closing the tab, so word-kill is on
+      // Alt-Backspace instead, which is also what readline offers.
+      if (k === "d") {
+        e.preventDefault();
+        if (!input) runCommand("exit");
+        else setLine(input.slice(0, pos) + input.slice(pos + 1), pos);
+        return;
+      }
+      return;
+    }
+
+    if (e.altKey && e.key === "Backspace") {
+      e.preventDefault();
+      const head = input.slice(0, pos).replace(/\S+\s*$/, "");
+      setLine(head + input.slice(pos), head.length);
+      return;
+    }
+
+    if (e.key === "Enter") { e.preventDefault(); runCommand(input); return; }
+
+    if (e.key === "Tab" && !chatOn) {
       e.preventDefault();
       const opts = window.TERMINAL.complete(input, lang);
-      if (opts.length === 1) setInput(opts[0] + " ");
-      else if (opts.length > 1) setSuggestions(opts);
+      if (!opts.length) return;
+      if (opts.length === 1) { setLine(opts[0] + " "); return; }
+      const common = longestCommonPrefix(opts);
+      if (common.length > input.trim().length) { setLine(common); return; }
+      // Second consecutive Tab lists the candidates, then the prompt is redrawn.
+      if (++tabRef.current >= 2) {
+        setHistory(h => [...h, { type: "prompt", cmd: input, chat: false, path: currentPath(), user: promptName },
+                              { type: "out", blocks: columnize(opts) }]);
+        tabRef.current = 0;
+      }
+      return;
     }
-    else if (e.key === "ArrowUp" && !chatOn) {
+
+    if (e.key === "ArrowUp" && !chatOn) {
       e.preventDefault();
       const idx = stackIdx < 0 ? cmdStack.length - 1 : Math.max(0, stackIdx - 1);
-      if (cmdStack[idx]) { setInput(cmdStack[idx]); setStackIdx(idx); }
+      if (cmdStack[idx] !== undefined) { setLine(cmdStack[idx]); setStackIdx(idx); }
+      return;
     }
-    else if (e.key === "ArrowDown" && !chatOn) {
+    if (e.key === "ArrowDown" && !chatOn) {
       e.preventDefault();
       if (stackIdx < 0) return;
       const idx = stackIdx + 1;
-      if (idx >= cmdStack.length) { setInput(""); setStackIdx(-1); }
-      else { setInput(cmdStack[idx]); setStackIdx(idx); }
+      if (idx >= cmdStack.length) { setLine(""); setStackIdx(-1); }
+      else { setLine(cmdStack[idx]); setStackIdx(idx); }
+      return;
     }
-    else if (e.key === "l" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setHistory([]); }
-    else if (e.key === "?" && !input && !chatOn) { e.preventDefault(); setShowHelp(true); }
-    else if (e.key === "Escape" && chatOn) { e.preventDefault(); handleChat("/exit"); }
-    else if (e.key === "Escape" && suAwait) { e.preventDefault(); setSuAwait(null); setInput(""); }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (chatOn) handleChat("/exit");
+      else if (suAwait) { setSuAwait(null); setLine(""); }
+      return;
+    }
   };
 
-  const COMMANDS = window.TERMINAL.buildCommands(lang);
+  const onInput = (e) => {
+    const v = e.target.value;
+    if (rsearch) { setRsearch(s => ({ ...s, term: v, skip: 0 })); setInput(v); setCaret(v.length); return; }
+    setInput(v);
+    syncCaret();
+  };
+
+  // What the visitor sees on the active line: the raw text, or dots while a
+  // password is being typed.
+  const shown = suAwait ? "" : input;
+  const cursorAt = Math.min(caret, shown.length);
 
   return (
     <div className="term-shell" onClick={() => inputRef.current && inputRef.current.focus()}>
-      <TermTitleBar lang={lang} onLang={onLang} onEasy={() => onModeChange && onModeChange("easy")} chatOn={chatOn} onExitChat={() => handleChat("/exit")} />
+      <TermTitleBar lang={lang} onLang={onLang} onEasy={() => onModeChange && onModeChange("easy")}
+                    chatOn={chatOn} onExitChat={() => handleChat("/exit")} user={promptName} path={promptPath} />
 
-      <div className="term-body" ref={scrollRef}>
+      {vi ? (
+        <ViEditor
+          path={vi.path}
+          initial={vi.lines}
+          lang={lang}
+          onExit={(note) => {
+            setVi(null);
+            setHistory(h => [...h, { type: "out", blocks: [
+              { kind: "text", text: note || `"${vi.path}" ${vi.lines.length}L`, dim: true },
+            ]}]);
+            requestAnimationFrame(() => inputRef.current && inputRef.current.focus());
+          }}
+        />
+      ) : (
+      <div className="term-body" ref={scrollRef} role="log" aria-live="polite"
+           aria-label={lang === "en" ? "terminal output" : "터미널 출력"}>
         <div className="term-body-inner">
-        <TermBanner lang={lang} />
+          <TermBanner lang={lang} T={T} />
 
-        {history.map((h, i) => {
-          if (h.type === "prompt") return (
-            <div key={i} className="t-prompt-line">
-              <span className="t-user">{promptName}@{window.SITE_DATA.site.handle}</span>
-              <span className="t-sep"> in </span>
-              <span className="t-path">{h.chat ? "~/chat" : (h.path || "~")}</span>
-              <span className="t-caret"> ❯ </span>
-              <span className="t-cmd">{h.cmd}</span>
+          {history.map((h, i) => {
+            if (h.type === "prompt") return (
+              <div key={i} className="t-prompt-line">
+                <Ps1 user={h.user || "anonymous"} host={HOST} path={h.path || "~"} chat={h.chat} />
+                <span className="t-cmd">{h.password ? "" : h.cmd}</span>
+              </div>
+            );
+            if (h.type === "chatline") return (
+              <Block key={i} lang={lang} block={{
+                kind: "chatmsg", role: h.role, text: h.text, pending: h.pending,
+                contentKind: h.contentKind, fileName: h.fileName, fileType: h.fileType, fileUrl: h.fileUrl,
+              }} />
+            );
+            return <div key={i} className="t-out">{h.blocks.map((b, j) => <Block key={j} block={b} lang={lang} />)}</div>;
+          })}
 
-            </div>
-          );
-          if (h.type === "chatline") return (
-            <Block key={h.id || i} block={{
-              kind: "chatmsg",
-              role: h.role,
-              text: h.text,
-              pending: h.pending,
-              contentKind: h.contentKind,
-              fileName: h.fileName,
-              fileType: h.fileType,
-              fileUrl: h.fileUrl,
-            }} lang={lang} />
-          );
-          return <div key={i} className="t-out">{h.blocks.map((b, j) => <Block key={j} block={b} onRun={runCommand} lang={lang} />)}</div>;
-        })}
-        </div>
-      </div>
-
-      {/* sticky prompt at bottom of viewport */}
-      <div className="term-bottom">
-        {suggestions.length > 0 && (
-          <div className="t-suggest">
-            {suggestions.map((s, i) => (
-              <span key={i} className="t-chip" onClick={() => { setInput(s); setSuggestions([]); inputRef.current && inputRef.current.focus(); }}>{s}</span>
-            ))}
-          </div>
-        )}
-        <QuickChips lang={lang} onRun={runCommand} chatOn={chatOn} T={T} COMMANDS={COMMANDS} />
-        <div className="t-prompt-line active sticky">
-          {suAwait ? (
-            <span className="t-user">{lang === "en" ? "Password:" : "비밀번호:"}</span>
-          ) : (
-            <>
-              <span className="t-user">{promptName}@{window.SITE_DATA.site.handle}</span>
-              <span className="t-sep"> in </span>
-              <span className="t-path">{chatOn ? "~/chat" : promptPath}</span>
-              <span className="t-caret"> ❯ </span>
-            </>
-          )}
-          <span className="t-input-wrap">
+          {/* The live prompt is the last line of the flow, not a fixed bar. */}
+          <div className="t-prompt-line active">
+            {suAwait
+              ? <span className="t-ps1">{lang === "en" ? "Password: " : "비밀번호: "}</span>
+              : rsearch
+                ? <span className="t-ps1 t-rsearch">(reverse-i-search)`{rsearch.term}': </span>
+                : <Ps1 user={promptName} host={HOST} path={chatOn ? "~/chat" : promptPath} chat={chatOn} />}
+            <span className="t-echo">
+              {rsearch ? rmatch : (
+                <>
+                  {shown.slice(0, cursorAt)}
+                  <span className="t-cursor">{shown[cursorAt] || " "}</span>
+                  {shown.slice(cursorAt + 1)}
+                </>
+              )}
+            </span>
             <input
               ref={inputRef}
               autoFocus
               type={suAwait ? "password" : "text"}
               value={input}
-              onChange={e => { setInput(e.target.value); setSuggestions([]); }}
+              onInput={onInput}
               onKeyDown={onKey}
+              onKeyUp={syncCaret}
+              onClick={syncCaret}
               className="t-input"
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              aria-label="terminal input"
+              autoComplete="off"
+              aria-label={lang === "en" ? "terminal input" : "터미널 입력"}
             />
-            {!input && <span className="t-ghost">{typedGhost}<span className="t-ghost-caret">▍</span></span>}
-          </span>
+          </div>
         </div>
-        <TermStatusBar text={T.status} />
       </div>
+      )}
 
-      {showHelp && <HelpOverlay lang={lang} COMMANDS={COMMANDS} onClose={() => setShowHelp(false)} onRun={(c) => { setShowHelp(false); runCommand(c); }} />}
       {matrixOn && <MatrixRain />}
     </div>
   );
 }
 
-const LOGO_99JIK = [
-  " █████╗  █████╗      ██╗██╗██╗  ██╗",
-  "██╔══██╗██╔══██╗     ██║██║██║ ██╔╝",
-  "╚██████║╚██████║     ██║██║█████╔╝ ",
-  " ╚═══██║ ╚═══██║██   ██║██║██╔═██╗ ",
-  " █████╔╝ █████╔╝╚█████╔╝██║██║  ██╗",
-  " ╚════╝  ╚════╝  ╚════╝ ╚═╝╚═╝  ╚═╝",
-].join("\n");
-
-function TermBanner({ lang }) {
-  const p = window.SITE_DATA.profile;
-  const role = lang === "en" ? p.role_en : p.role_ko;
-  const aff  = lang === "en" ? p.affiliation_en : p.affiliation_ko;
-  const name = lang === "en" ? p.name_en : p.name_ko;
-  const nameAlt = lang === "en" ? p.name_ko : p.name_en;
-  return (
-    <div className="term-banner">
-      <div className="term-banner-head">
-        <pre className="term-banner-logo">{LOGO_99JIK}</pre>
-        <BannerAnim />
-      </div>
-      <div className="term-banner-meta">
-        <span className="tbm-tag">.com</span>
-        <span className="tbm-name">{name}</span>
-        <span className="tbm-alt">{nameAlt}</span>
-        <span className="tbm-sep">│</span>
-        <span>{role} · {aff}</span>
-        <span className="tbm-online">● online · KST {new Date().toLocaleTimeString("en-GB").slice(0,5)}</span>
-      </div>
-    </div>
-  );
-}
-
-// Randomly picks one of N banner animations per page load.
+// Picks one of the four ASCII animations per page load. They sit beside the logo,
+// so they cost horizontal space that was empty anyway, not vertical space.
 function BannerAnim() {
   const ANIMS = [LorenzSpin, DonutSpin, Starfield, CubeSpin];
   const [Pick] = React.useState(() => ANIMS[Math.floor(Math.random() * ANIMS.length)]);
+  // Continuous rAF loops with no meaningful still frame. Keep the empty box so
+  // dropping them under reduced motion does not shift the banner.
+  if (window.prefersReducedMotion()) return <pre className="term-banner-anim" aria-hidden="true" />;
   return <Pick />;
 }
 
@@ -562,6 +586,8 @@ function LorenzSpin() {
 }
 
 // Andy Sloane's rotating torus — shaded via surface normal.
+
+// Andy Sloane's rotating torus — shaded via surface normal.
 function DonutSpin() {
   const preRef = React.useRef(null);
   React.useEffect(() => {
@@ -605,6 +631,10 @@ function DonutSpin() {
   }, []);
   return <pre ref={preRef} className="term-banner-anim anim-donut" aria-hidden="true" />;
 }
+
+// Starfield warp — stars stream radially outward from the center (hyperspace).
+// Each frame we draw a short line from the star's previous projected position
+// to its current one, so closer stars leave longer streaks.
 
 // Starfield warp — stars stream radially outward from the center (hyperspace).
 // Each frame we draw a short line from the star's previous projected position
@@ -678,6 +708,8 @@ function Starfield() {
 }
 
 // Rotating wireframe cube — 8 vertices, 12 edges, Bresenham line draw.
+
+// Rotating wireframe cube — 8 vertices, 12 edges, Bresenham line draw.
 function CubeSpin() {
   const preRef = React.useRef(null);
   React.useEffect(() => {
@@ -738,44 +770,65 @@ function CubeSpin() {
   return <pre ref={preRef} className="term-banner-anim anim-cube" aria-hidden="true" />;
 }
 
-function ProgressiveBlock({ lines, delay = 700 }) {
-  const [count, setCount] = React.useState(1);
-  React.useEffect(() => {
-    if (!lines || count >= lines.length) return;
-    const id = setTimeout(() => setCount(c => c + 1), delay);
-    return () => clearTimeout(id);
-  }, [count, lines, delay]);
-  if (!lines) return null;
+
+const LOGO_99JIK = [
+  " █████╗  █████╗      ██╗██╗██╗  ██╗",
+  "██╔══██╗██╔══██╗     ██║██║██║ ██╔╝",
+  "╚██████║╚██████║     ██║██║█████╔╝ ",
+  " ╚═══██║ ╚═══██║██   ██║██║██╔═██╗ ",
+  " █████╔╝ █████╔╝╚█████╔╝██║██║  ██╗",
+  " ╚════╝  ╚════╝  ╚════╝ ╚═╝╚═╝  ╚═╝",
+].join("\n");
+
+// Login banner. Identity is deliberately absent: the seeded `about` prints it
+// immediately below, and having both made the first screen say the same thing three
+// times over. The banner only does what a motd does, which is tell you what to type.
+function TermBanner({ lang, T }) {
+  const p = window.SITE_DATA.profile;
+  const name = lang === "en" ? p.name_en : p.name_ko;
+  const nameAlt = lang === "en" ? p.name_ko : p.name_en;
+  const role = lang === "en" ? p.role_en : p.role_ko;
+  const aff = lang === "en" ? p.affiliation_en : p.affiliation_ko;   // hidden <h1> only
+  const stamp = new Date().toLocaleString("en-GB", {
+    timeZone: "Asia/Seoul", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  });
   return (
-    <>
-      {lines.slice(0, count).map((line, i) => (
-        <div key={i} className="t-line">{line || " "}</div>
-      ))}
-    </>
+    <div className="term-banner">
+      {/* The logo is a <pre>, so the default view would otherwise have no heading. */}
+      <h1 className="sr-only">{name} ({nameAlt}) - {role} · {aff}</h1>
+      <div className="term-banner-head">
+        <pre className="term-banner-logo" aria-hidden="true">{LOGO_99JIK}</pre>
+        <BannerAnim />
+      </div>
+      <div className="t-line dim">{T.lastLogin(stamp)}</div>
+      <div className="t-line dim">{T.hint}</div>
+      <div className="t-line dim">{T.easyHint}</div>
+      <div className="t-line">&nbsp;</div>
+    </div>
   );
 }
 
-// Live `top` — refreshes CPU% every 1.5s while mounted.
-function LiveTopBlock() {
-  const [, tick] = React.useState(0);
-  React.useEffect(() => {
-    const id = setInterval(() => tick(t => t + 1), 1500);
-    return () => clearInterval(id);
-  }, []);
-  const w = (base) => (Math.max(0, Math.min(99.9, base + (Math.random() - 0.5) * 10))).toFixed(1).padStart(5, " ");
+function TermTitleBar({ lang, onLang, onEasy, chatOn, onExitChat, user, path }) {
   return (
-    <>
-      <div className="t-line">  PID USER      %CPU  %MEM  COMMAND</div>
-      <div className="t-line">{`    1 jeongin   ${w(88)}  12.4  thinking-about-testing`}</div>
-      <div className="t-line">{`    2 jeongin   ${w(42)}   8.1  writing-paper`}</div>
-      <div className="t-line">{`    3 jeongin   ${w(15)}   2.2  refreshing-arxiv`}</div>
-      <div className="t-line">{`    4 jeongin   ${w( 2)}   0.8  sleeping`}</div>
-      <div className="t-line dim">{`    5 llm          0.3   0.1  waiting-for-oracle`}</div>
-    </>
+    <div className="term-title">
+      <span className="term-dot r" /><span className="term-dot y" /><span className="term-dot g" />
+      <div className="term-title-name">
+        {chatOn ? `chat - ${window.SITE_DATA.site.handle}` : `${user}@${window.SITE_DATA.site.handle}: ${path} - bash`}
+      </div>
+      <div className="term-title-actions">
+        <div className="lang-seg" role="group" aria-label="language">
+          <button className={"lang-btn" + (lang === "ko" ? " on" : "")} onClick={() => onLang("ko")}>한</button>
+          <button className={"lang-btn" + (lang === "en" ? " on" : "")} onClick={() => onLang("en")}>EN</button>
+        </div>
+        {chatOn
+          ? <button className="term-easy" onClick={onExitChat}>exit chat</button>
+          : <button className="term-easy" onClick={onEasy}>Easy Mode</button>}
+      </div>
+    </div>
   );
 }
 
-// wttr.in JSON endpoint → local ASCII rendering. Avoids HTML being served to browsers.
+// wttr.in JSON endpoint, rendered locally as ASCII.
 const WEATHER_ART = {
   sunny:  ["    \\   /    ", "     .-.     ", "  -- (   ) --", "     `-'     ", "    /   \\    "],
   cloudy: ["             ", "     .--.    ", "  .-(    ).  ", " (___.__)__) ", "             "],
@@ -801,121 +854,36 @@ function WeatherBlock({ location }) {
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
     const loc = encodeURIComponent(location || "Daegu");
-    fetch(`https://wttr.in/${loc}?format=j1`)
+    // Third-party endpoint, no SLA. Without a deadline a hung request leaves
+    // "fetching weather..." on screen forever.
+    let cancelled = false;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    fetch(`https://wttr.in/${loc}?format=j1`, { signal: ctl.signal })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(data => setState({ loading: false, data }))
-      .catch(() => setState({ loading: false, error: true }));
+      .then(data => { if (!cancelled) setState({ loading: false, data }); })
+      .catch(() => { if (!cancelled) setState({ loading: false, error: true }); });
+    return () => { cancelled = true; clearTimeout(timer); ctl.abort(); };
   }, [location]);
 
-  if (state.loading) return <div className="t-line dim">fetching weather…</div>;
+  if (state.loading) return <div className="t-line dim">fetching weather...</div>;
   if (state.error || !state.data) {
     return <div className="t-line warn">weather: could not fetch for {location || "Daegu"}.</div>;
   }
-
   const cc = state.data.current_condition && state.data.current_condition[0];
-  const area = state.data.nearest_area && state.data.nearest_area[0] && state.data.nearest_area[0].areaName[0].value;
   if (!cc) return <div className="t-line warn">weather: malformed response.</div>;
-
+  const area = state.data.nearest_area?.[0]?.areaName?.[0]?.value;
   const desc = cc.weatherDesc?.[0]?.value || "Unknown";
   const art = WEATHER_ART[pickWeatherArt(desc)];
-  const temp = cc.temp_C;
-  const feels = cc.FeelsLikeC;
-  const wind = cc.windspeedKmph;
-  const windDir = cc.winddir16Point;
-  const humidity = cc.humidity;
-  const obs = cc.observation_time || "";
-
   const info = [
-    `${desc.padEnd(18, " ")}  ${temp}°C  (feels ${feels}°C)`,
-    `wind: ${windDir} ${wind} km/h      humidity: ${humidity}%`,
+    `${desc.padEnd(18, " ")}  ${cc.temp_C}°C  (feels ${cc.FeelsLikeC}°C)`,
+    `wind: ${cc.winddir16Point} ${cc.windspeedKmph} km/h      humidity: ${cc.humidity}%`,
   ];
-
   return (
     <>
-      {art.map((line, i) => (
-        <div key={"a" + i} className="t-line">
-          {line}   {info[i] || ""}
-        </div>
-      ))}
-      <div className="t-line dim">{area || location} · obs {obs}</div>
+      {art.map((line, i) => <div key={"a" + i} className="t-line">{line}   {info[i] || ""}</div>)}
+      <div className="t-line dim">{area || location} · obs {cc.observation_time || ""}</div>
     </>
-  );
-}
-
-function TermTitleBar({ lang, onLang, onEasy, chatOn, onExitChat }) {
-  return (
-    <div className="term-title">
-      <span className="term-dot r" /><span className="term-dot y" /><span className="term-dot g" />
-      <div className="term-title-name">{chatOn ? `chat — ${window.SITE_DATA.site.handle}` : `anonymous@${window.SITE_DATA.site.handle} — ~/ — zsh`}</div>
-      <div className="term-title-actions">
-        <div className="lang-seg" role="group" aria-label="language">
-          <button className={"lang-btn" + (lang === "ko" ? " on" : "")} onClick={() => onLang("ko")}>한</button>
-          <button className={"lang-btn" + (lang === "en" ? " on" : "")} onClick={() => onLang("en")}>EN</button>
-        </div>
-        {chatOn
-          ? <button className="term-easy" onClick={onExitChat}>exit chat ✕</button>
-          : <button className="term-easy" onClick={onEasy}>{lang === "en" ? "Easy Mode →" : "Easy Mode →"}</button>}
-      </div>
-    </div>
-  );
-}
-
-function TermStatusBar({ text }) {
-  return <div className="term-status"><span>{text}</span><span>daegu · kr</span></div>;
-}
-
-function QuickChips({ onRun, chatOn, T, COMMANDS, lang }) {
-  if (chatOn) return (
-    <div className="t-quick">
-      <span className="t-quick-label">{T.suggest}</span>
-      {["/exit", "/clear"].map(c => (
-        <span key={c} className="t-chip" onClick={() => onRun(c)}>{c}</span>
-      ))}
-    </div>
-  );
-  const items = ["about", "projects", "research", "now", "chat", "cv", "til", "easy"];
-  return (
-    <div className="t-quick">
-      <span className="t-quick-label">{T.chipsLabel}</span>
-      {items.map(c => (
-        <span key={c} className="t-chip t-chip-solid" onClick={() => onRun(c)} title={COMMANDS[c]?.hint}>
-          {c}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function HelpOverlay({ lang, COMMANDS, onClose, onRun }) {
-  const entries = Object.entries(COMMANDS).filter(([,v]) => !v.hidden);
-  React.useEffect(() => {
-    const h = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, []);
-  return (
-    <div className="help-backdrop" onClick={onClose}>
-      <div className="help-panel" onClick={e => e.stopPropagation()}>
-        <div className="help-h">
-          <div>
-            <div className="help-title">{lang === "en" ? "Commands" : "명령어 목록"}</div>
-            <div className="help-sub">{lang === "en" ? "Click to run. ESC or click outside to close." : "클릭하면 실행됩니다. ESC 또는 바깥 클릭으로 닫기."}</div>
-          </div>
-          <button className="help-close" onClick={onClose}>close ✕</button>
-        </div>
-        <div className="help-grid">
-          {entries.map(([k, v]) => (
-            <button key={k} className="help-row" onClick={() => onRun(k)}>
-              <span className="help-cmd">{k}</span>
-              <span className="help-hint">{v.hint}</span>
-            </button>
-          ))}
-        </div>
-        <div className="help-egghint">
-          {lang === "en" ? window.EGGS.HINT_EN : window.EGGS.HINT_KO}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -923,69 +891,69 @@ function NowBlock({ view, lang }) {
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
     let cancelled = false;
-    window.CALENDAR.load().then(data => {
-      if (cancelled) return;
-      setState({ loading: false, data });
-    });
+    window.CALENDAR.load().then(data => { if (!cancelled) setState({ loading: false, data }); });
     return () => { cancelled = true; };
   }, []);
 
   if (state.loading) return <div className="t-line dim">{lang === "en" ? "loading calendar..." : "캘린더 불러오는 중..."}</div>;
   const data = state.data;
-  const events = view === "month" ? window.CALENDAR.getMonth(data) : view === "week" ? window.CALENDAR.getWeek(data) : window.CALENDAR.getToday(data);
-  const title = view === "month" ? (lang === "en" ? "this month" : "이번 달") : view === "week" ? (lang === "en" ? "this week" : "이번 주") : (lang === "en" ? "today" : "오늘 일정");
-  const tagColor = { lab: "var(--t-cyan)", focus: "var(--t-accent)", teach: "var(--t-yellow)", life: "var(--t-magenta, #c678dd)", other: "var(--t-muted)" };
+  const events = view === "month" ? window.CALENDAR.getMonth(data)
+               : view === "week" ? window.CALENDAR.getWeek(data)
+               : window.CALENDAR.getToday(data);
+  const title = view === "month" ? (lang === "en" ? "this month" : "이번 달")
+              : view === "week" ? (lang === "en" ? "this week" : "이번 주")
+              : (lang === "en" ? "today" : "오늘");
+  const synced = window.CALENDAR.relativeAgo(data.updated, lang);
 
   if (!events.length) {
     return (
-      <div className="t-now">
-        <div className="t-now-h">── {title} ──</div>
-        <div className="t-line dim">{lang === "en" ? "nothing on. good time to focus." : "비어 있어요. 집중할 시간이네요."}</div>
-        <div className="t-now-foot">{lang === "en" ? `last sync: ${window.CALENDAR.relativeAgo(data.updated, lang)}` : `마지막 동기화: ${window.CALENDAR.relativeAgo(data.updated, lang)}`}</div>
-      </div>
+      <>
+        <div className="t-line strong">{title}</div>
+        <div className="t-line dim">{lang === "en" ? "nothing scheduled." : "일정이 없습니다."}</div>
+        <div className="t-line dim">{lang === "en" ? `last sync: ${synced}` : `마지막 동기화: ${synced}`}</div>
+      </>
     );
   }
 
-  // group by day for week/month view
-  const groups = {};
-  events.forEach(e => {
-    const key = window.CALENDAR.fmtDay(e._start, lang);
-    (groups[key] = groups[key] || []).push(e);
-  });
-
+  const rows = [];
+  let lastDay = null;
+  for (const e of events) {
+    const day = window.CALENDAR.fmtDay(e._start, lang);
+    if (view !== "today" && day !== lastDay) { rows.push({ day }); lastDay = day; }
+    rows.push({ e });
+  }
   return (
-    <div className="t-now">
-      <div className="t-now-h">── {title} ──</div>
-      {Object.entries(groups).map(([day, evs]) => (
-        <div key={day} className="t-now-day">
-          {view !== "today" && <div className="t-now-daylbl">{day}</div>}
-          {evs.map((e, i) => (
-            <div key={i} className="t-now-ev">
-              <span className="t-now-time">{window.CALENDAR.fmtTime(e._start)}–{window.CALENDAR.fmtTime(e._end)}</span>
-              <span className="t-now-tag" style={{ color: tagColor[e.tag] || "var(--t-muted)" }}>●</span>
-              <span className="t-now-title">{e.title}</span>
-              {e.location && <span className="t-now-loc">@ {e.location}</span>}
-            </div>
-          ))}
-        </div>
-      ))}
-      <div className="t-now-foot">
-        {lang === "en" ? `last sync: ${window.CALENDAR.relativeAgo(data.updated, lang)}` : `마지막 동기화: ${window.CALENDAR.relativeAgo(data.updated, lang)}`}
-        {" · "}<span className="t-now-hint">{lang === "en" ? "try: now --week · now --month" : "try: now --week · now --month"}</span>
-      </div>
-    </div>
+    <>
+      <div className="t-line strong">{title}</div>
+      {rows.map((r, i) => r.day
+        ? <div key={i} className="t-line dim">{r.day}</div>
+        : <div key={i} className="t-line">
+            {`  ${window.CALENDAR.fmtTime(r.e._start)}-${window.CALENDAR.fmtTime(r.e._end)}  `}
+            <span className={"t-tag t-tag-" + (r.e.tag || "other")}>{r.e.tag || "other"}</span>
+            {`  ${r.e.title}${r.e.location ? "  @" + r.e.location : ""}`}
+          </div>)}
+      <div className="t-line dim">{lang === "en" ? `last sync: ${synced}` : `마지막 동기화: ${synced}`}</div>
+    </>
   );
 }
+
 function MatrixRain() {
   const canvasRef = React.useRef(null);
   React.useEffect(() => {
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext("2d");
-    const resize = () => { c.width = window.innerWidth; c.height = window.innerHeight; };
+    let drops = [];
+    const resize = () => {
+      c.width = window.innerWidth; c.height = window.innerHeight;
+      const cols = Math.floor(c.width / 14);
+      // Keep existing columns where they are, seed only the ones a widen just added.
+      drops.length = cols;
+      for (let i = 0; i < cols; i++) {
+        if (drops[i] === undefined) drops[i] = Math.floor(Math.random() * c.height / 14);
+      }
+    };
     resize();
     window.addEventListener("resize", resize);
-    const cols = Math.floor(c.width / 14);
-    const drops = new Array(cols).fill(0).map(() => Math.floor(Math.random() * c.height / 14));
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789{}[]<>=+-*/";
     let raf;
     const draw = () => {
@@ -994,8 +962,7 @@ function MatrixRain() {
       ctx.fillStyle = "#39ff14";
       ctx.font = "14px 'JetBrains Mono', monospace";
       for (let i = 0; i < drops.length; i++) {
-        const ch = chars[Math.floor(Math.random() * chars.length)];
-        ctx.fillText(ch, i * 14, drops[i] * 14);
+        ctx.fillText(chars[Math.floor(Math.random() * chars.length)], i * 14, drops[i] * 14);
         if (drops[i] * 14 > c.height && Math.random() > 0.975) drops[i] = 0;
         drops[i]++;
       }

@@ -7,9 +7,12 @@ import { render } from "preact/compat";
 
 import "./data.js";
 import "./themes.js";
+import "./prefs.js";
 import "./fs.js";
+import "./coreutils.js";
 import "./calendar.js";
-import "./eggs.js";
+import "./tools.js";
+import "./extras.js";
 import "./crisp.js";
 import "./analytics.js";
 import "./terminal-commands.js";
@@ -17,42 +20,29 @@ import "./terminal-commands.js";
 import { TerminalView } from "./terminal-view.jsx";
 import { EasyMode } from "./easy-mode.jsx";
 
-const TWEAKS_DEFAULT = {
-  theme: "dark",
-  defaultMode: "terminal",
-  cursorTrail: true,
-  lang: "ko",
-};
-
 const BOOT_LINES = [
-  "[    0.000] Booting JIKOS 25.04 (jik-kernel 6.10-coffee)",
-  "[    0.003] BIOS: 99jik Research Labs v4.2",
-  "[    0.012] Memory: 16384 MB -- 12288 MB reserved for coffee cache",
-  "[    0.034] CPU0: CaffeinatedCore(TM) i99-2026K @ 4.2 GHz",
-  "[    0.058] Detecting hardware...",
-  "[    0.089]   hid.usb: keyboard (ANSI layout) -- OK",
-  "[    0.105]   hid.usb: coffee mug -- mounted at /mnt/fuel",
-  "[    0.142] Loading kernel modules:",
-  "[    0.158]   testing.ko ............. OK",
-  "[    0.174]   oracle.ko .............. OK",
-  "[    0.201]   llm.ko ................. OK",
-  "[    0.228]   sil.ko ................. OK",
-  "[    0.261]   easter-eggs.ko ......... OK",
-  "[    0.288] Starting services:",
-  "[    0.319]   sshd.service ........... [  OK  ]",
-  "[    0.346]   calendar.service ....... [  OK  ]",
-  "[    0.381]   crisp-chat.service ..... [  OK  ]",
-  "[    0.415]   sanity.service ......... [ FAIL ]",
-  "[    0.449]   coffee.service ......... [  OK  ]",
-  "[    0.488] Network: eth0 up -- 99jik.com",
-  "[    0.531] Locale: ko_KR.UTF-8 / KST (+09:00)",
-  "[    0.612] ",
-  "[    0.658]   +----------------------------------+",
-  "[    0.661]   |   Welcome to 99jik.com           |",
-  "[    0.664]   |   99jik tty1 -- bash 5.2         |",
-  "[    0.667]   +----------------------------------+",
-  "[    0.912] ",
-  "[    0.988] anonymous login: ",
+  "[    0.000000] Linux version 6.10.0-jik (jeongin@99jik) #1 SMP",
+  "[    0.000000] Command line: ro quiet console=tty1",
+  "[    0.014221] Memory: 16384K available",
+  "[    0.031885] Mount-cache hash table entries: 512",
+  "[    0.052110] devtmpfs: initialized",
+  "[    0.078943] clocksource: jiffies, resolution 1ms",
+  "[    0.104518] NET: Registered protocol family 1",
+  "[    0.131002] jikfs: mounting root filesystem read-only",
+  "[    0.158774] jikfs: clean, 1024K blocks",
+  "[    0.186290] Loading modules:",
+  "[    0.201447]   coreutils .............. ok",
+  "[    0.228016]   calendar ............... ok",
+  "[    0.255330]   livechat ............... ok",
+  "[    0.281905]   themes ................. ok",
+  "[    0.319662] systemd[1]: Starting user sessions...",
+  "[    0.346128] systemd[1]: Reached target Multi-User System.",
+  "[    0.381004] eth0: link becomes ready",
+  "[    0.415773] Locale set to ko_KR.UTF-8 (KST, UTC+09:00)",
+  "[    0.488210] ",
+  "[    0.531446] JIKOS 1.0  99jik  tty1",
+  "[    0.612009] ",
+  "[    0.988421] 99jik login: anonymous (autologin)",
 ];
 
 function BootSequence({ onDone }) {
@@ -103,39 +93,6 @@ function BootSequence({ onDone }) {
   );
 }
 
-function CursorTrail() {
-  const dotRef = React.useRef(null);
-  const ringRef = React.useRef(null);
-  React.useEffect(() => {
-    let x = 0, y = 0, rx = 0, ry = 0;
-    const onMove = (e) => {
-      x = e.clientX; y = e.clientY;
-      if (dotRef.current) {
-        dotRef.current.style.left = x + "px";
-        dotRef.current.style.top = y + "px";
-      }
-    };
-    let raf;
-    const tick = () => {
-      rx += (x - rx) * 0.18; ry += (y - ry) * 0.18;
-      if (ringRef.current) {
-        ringRef.current.style.left = rx + "px";
-        ringRef.current.style.top = ry + "px";
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    window.addEventListener("mousemove", onMove);
-    return () => { window.removeEventListener("mousemove", onMove); cancelAnimationFrame(raf); };
-  }, []);
-  return (
-    <>
-      <div ref={ringRef} className="cursor-ring" />
-      <div ref={dotRef} className="cursor-dot" />
-    </>
-  );
-}
-
 function Tweaks({ state, set, onClose }) {
   return (
     <div className="tweaks">
@@ -153,10 +110,6 @@ function Tweaks({ state, set, onClose }) {
           <option value="easy">Easy</option>
         </select>
       </div>
-      <div className="tweaks-row">
-        <span>Cursor trail</span>
-        <button onClick={() => set({ cursorTrail: !state.cursorTrail })}>{state.cursorTrail ? "on" : "off"}</button>
-      </div>
       <div style={{ marginTop: 8, fontSize: 10, color: "var(--t-muted)" }}>
         터미널에서 <code>theme phosphor</code>, <code>easy</code> 로도 가능
       </div>
@@ -167,30 +120,57 @@ function Tweaks({ state, set, onClose }) {
   );
 }
 
+// `?view=easy` is the link to hand to someone who should not meet a terminal:
+// a recruiter, a professor, an application form. It beats the stored preference,
+// so the link means the same thing for everyone who opens it.
+function viewFromUrl() {
+  try {
+    const v = new URLSearchParams(location.search).get("view");
+    return (v === "easy" || v === "terminal") ? v : null;
+  } catch { return null; }
+}
+
 const BOOT_KEY = "99jik:booted";
 const BOOT_VERSION = "1";
 
 function App() {
-  const [tweaks, setTweaks] = React.useState(TWEAKS_DEFAULT);
-  const [mode, setMode] = React.useState(() => tweaks.defaultMode);
+  const [tweaks, setTweaks] = React.useState(window.PREFS.load);
+  const [mode, setMode] = React.useState(() => viewFromUrl() || window.PREFS.load().defaultMode);
   const [showTweaks, setShowTweaks] = React.useState(false);
   const [bootDone, setBootDone] = React.useState(() => {
-    try { return localStorage.getItem(BOOT_KEY) === BOOT_VERSION; }
-    catch { return true; }
+    // Reduced motion skips the boot log entirely: it is 28 timed lines of pure motion.
+    if (window.prefersReducedMotion()) return true;
+    return window.PREFS.store.get(BOOT_KEY) === BOOT_VERSION;
   });
   const onBootDone = () => {
     setBootDone(true);
-    try { localStorage.setItem(BOOT_KEY, BOOT_VERSION); } catch {}
+    window.PREFS.store.set(BOOT_KEY, BOOT_VERSION);
   };
 
   const setTw = (patch) => {
     const next = { ...tweaks, ...patch };
     setTweaks(next);
+    window.PREFS.save(next);
     if (patch.theme) window.applyTheme(patch.theme);
     try { window.parent.postMessage({ type: "__edit_mode_set_keys", edits: patch }, "*"); } catch {}
   };
 
   React.useEffect(() => { window.applyTheme(tweaks.theme); }, []);
+
+  // Keep <html lang> in sync: screen readers pick voice from it, and crisp.js reads it
+  // to choose the chat widget locale.
+  React.useEffect(() => { document.documentElement.lang = tweaks.lang; }, [tweaks.lang]);
+
+  // Make the current view copy-pasteable. The default view leaves the URL clean, so
+  // 99jik.com stays 99jik.com and only the non-default one carries a parameter.
+  React.useEffect(() => {
+    try {
+      const url = new URL(location.href);
+      if (mode === tweaks.defaultMode) url.searchParams.delete("view");
+      else url.searchParams.set("view", mode);
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    } catch {}
+  }, [mode, tweaks.defaultMode]);
 
   React.useEffect(() => {
     const onMsg = (e) => {
@@ -213,7 +193,6 @@ function App() {
   return (
     <>
       {!bootDone && <BootSequence onDone={onBootDone} />}
-      {tweaks.cursorTrail && <CursorTrail />}
       {mode === "terminal"
         ? <TerminalView onModeChange={setMode} onTheme={(t) => setTw({ theme: t })} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
         : <EasyMode onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />

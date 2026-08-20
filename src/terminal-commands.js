@@ -7,17 +7,13 @@
   // simple bilingual strings lookup used across commands
   const S = {
     avail:       { ko: "사용 가능한 명령", en: "Available commands" },
-    tip:         { ko: "Tip — Tab 자동완성 · ? 단축 도움말 · ↑/↓ 히스토리 · Enter만 누르면 다음 제안.", en: "Tip — Tab to complete · ? for help · ↑/↓ for history · press Enter alone for suggestions." },
+    shell_h:     { ko: "셸 명령", en: "Shell commands" },
+    shell_tip:   { ko: "`man <명령>` 으로 사용법 · 파이프도 됩니다 (`ls | wc -l`)", en: "`man <cmd>` for usage · pipes work too (`ls | wc -l`)" },
+    tip:         { ko: "Tab 자동완성 (두 번 누르면 후보) · ↑↓ 히스토리 · Alt-R 검색 · Ctrl-A/E/U/K · Alt-Backspace", en: "Tab completes (twice to list) · up/down for history · Alt-R to search · Ctrl-A/E/U/K · Alt-Backspace" },
     research_h:  { ko: "연구 관심사", en: "Research interests" },
-    projects_h:  { ko: "프로젝트 — cat <slug> 로 자세히", en: "Projects — cat <slug> for details" },
-    now_h:       { ko: () => `현재 하고 있는 것 — ${D().site.updatedLabel.ko}`, en: () => `Now — ${D().site.updatedLabel.en}` },
-    now_today:   { ko: "오늘 일정", en: "today" },
-    now_week:    { ko: "이번 주", en: "this week" },
-    now_month:   { ko: "이번 달", en: "this month" },
-    now_none:    { ko: "오늘은 일정이 비어 있어요. 연구할 시간이네요.", en: "nothing on today. good time to focus." },
-    now_sync:    { ko: (t) => `Last sync: ${t} · \`now --week\` / \`now --month\``, en: (t) => `last sync: ${t} · \`now --week\` / \`now --month\`` },
-    now_all_day: { ko: "종일", en: "all-day" },
-    now_loading: { ko: "캘린더 불러오는 중...", en: "loading calendar..." },
+    projects_h:  { ko: "cat <slug> 으로 자세히 봅니다.", en: "`cat <slug>` for details." },
+    // `now` renders through the NowBlock component, which owns its own strings
+    // (view strings live with the view, same as terminal-view.jsx's T object).
     pubs_h:      { ko: "논문 / 글", en: "Publications" },
     exp_h:       { ko: "경력 및 학력", en: "Experience & Education" },
     ls_nodir:    { ko: (d) => `ls: ${d}: 그런 디렉토리는 없습니다. try: ls projects`, en: (d) => `ls: ${d}: no such directory. try: ls projects` },
@@ -28,8 +24,9 @@
     cat_nf:      { ko: (s) => `cat: ${s}: 파일을 찾지 못했어요.`, en: (s) => `cat: ${s}: not found.` },
     stack:       { ko: "스택", en: "stack" },
     read_repo:   { ko: (slug) => `github.com/${D().site.github}/${slug} 로 이동 →`, en: (slug) => `open → github.com/${D().site.github}/${slug}` },
-    cv_open:     { ko: "CV.pdf 다운로드 링크를 준비했어요.", en: "Preparing CV.pdf ..." },
-    cv_link:     { ko: "CV.pdf 받기 ↓", en: "download CV.pdf ↓" },
+    cv_open:     { ko: "CV 링크입니다. 한국어판과 영문판이 따로 있어요.", en: "CV is available in Korean and English." },
+    cv_ko:       { ko: "CV (한국어) 열기 ↗", en: "CV (Korean) ↗" },
+    cv_en:       { ko: "CV (영문) 열기 ↗", en: "CV (English) ↗" },
     til_go:      { ko: () => `→ ${D().site.til} 으로 이동합니다`, en: () => `→ heading to ${D().site.til}` },
     til_link:    { ko: () => `${D().site.til} 열기 ↗`, en: () => `open ${D().site.til} ↗` },
     nf:          { ko: (c) => `명령을 찾지 못했어요: ${c} — 'help' 또는 '?' 를 눌러보세요`, en: (c) => `command not found: ${c} — try 'help' or '?'` },
@@ -40,10 +37,9 @@
     lang_set:    { ko: (l) => `언어 → ${l}`, en: (l) => `lang → ${l}` },
     email:       { ko: "이메일", en: "email" },
     scholar_soon:{ ko: "(준비 중)", en: "(coming soon)" },
-    sudo:        { ko: "좋은 시도였어요.", en: "nice try." },
     chat_intro:  { ko: "채팅을 시작합니다. '/exit' 로 종료, '/clear' 로 비우기.", en: "Chat started. '/exit' to leave, '/clear' to reset." },
     chat_info:   {
-      ko: () => `${D().profile.name_ko} 에게 실시간으로 전달됩니다. 오프라인이면 조금 뒤에 답장이 올 수 있어요.`,
+      ko: () => `${D().profile.name_ko}에게 실시간으로 전달됩니다. 오프라인이면 조금 뒤에 답장이 올 수 있어요.`,
       en: () => `Delivered to ${D().profile.name_en.split(" ")[0]} in real time. If offline, replies may take a while.`,
     },
     hints: {
@@ -53,7 +49,10 @@
       research: { ko: "연구 관심사", en: "Research interests" },
       ls:       { ko: "파일 목록 보기", en: "List files" },
       projects: { ko: "프로젝트 전부 보기", en: "View all projects" },
-      cat:      { ko: "특정 프로젝트 상세 (cat sil-harness)", en: "Project detail (cat sil-harness)" },
+      cat:      {
+        ko: () => `특정 프로젝트 상세 (cat ${D().projects[0]?.slug || "<slug>"})`,
+        en: () => `Project detail (cat ${D().projects[0]?.slug || "<slug>"})`,
+      },
       publications: { ko: "논문 / 글", en: "Publications" },
       experience: { ko: "경력 / 학력", en: "Experience / Education" },
       skills:   { ko: "언어 · 도구 · 연구", en: "Languages · tools · research" },
@@ -62,7 +61,7 @@
       cv:       { ko: "CV 다운로드", en: "Download CV" },
       til:      { ko: () => `TIL 사이트로 (${D().site.til})`, en: () => `Go to TIL (${D().site.til})` },
       chat:     {
-        ko: () => `${D().profile.name_ko} 에게 메시지 보내기`,
+        ko: () => `${D().profile.name_ko}에게 메시지 보내기`,
         en: () => `Send ${D().profile.name_en.split(" ")[0]} a message`,
       },
       theme:    { ko: "테마 변경", en: "Change theme" },
@@ -71,6 +70,17 @@
       clear:    { ko: "화면 지우기", en: "Clear screen" },
     },
   };
+
+  // Aligned in text, coloured per segment. A div table was the wrong answer, but so
+  // was flat monochrome: real terminal output uses colour to carry structure.
+  function kvLines(rows, indent = "  ") {
+    const w = rows.reduce((m, [k]) => Math.max(m, window.TEXT.cells(k)), 0);
+    return rows.map(([k, v]) => ({
+      kind: "text",
+      text: indent + window.TEXT.padEnd(k, w + 2) + v,
+      parts: [{ t: indent }, { t: window.TEXT.padEnd(k, w + 2), c: "key" }, { t: String(v) }],
+    }));
+  }
 
   const pick = (obj, lang, ...args) => {
     const v = obj[lang] ?? obj.ko;
@@ -82,14 +92,23 @@
     const t = (k, ...args) => pick(S[k], lang, ...args);
 
     const C = {
-      help: { hint: H("help"), run: () => [
-        { kind: "text", text: t("avail") + ":" },
-        { kind: "kv", rows: Object.entries(C).filter(([k]) => !C[k].hidden).map(([k, v]) => [k, v.hint]) },
-        { kind: "text", text: t("tip"), dim: true },
-      ]},
-      "?": { hidden: true, hint: "= help", run: () => C.help.run() },
+      help: { usage: "help", hint: H("help"), run: () => {
+        const visible = Object.entries(C).filter(([k]) => !C[k].hidden);
+        const site = visible.filter(([, v]) => v.group !== "shell");
+        const shell = visible.filter(([, v]) => v.group === "shell").map(([k]) => k).sort();
+        return [
+          { kind: "text", text: t("avail") + ":" },
+          ...kvLines(site.map(([k, v]) => [k, v.hint])),
+          { kind: "text", text: "" },
+          { kind: "text", text: t("shell_h") + ":", strong: true },
+          { kind: "text", text: "  " + shell.join("  ") },
+          { kind: "text", text: t("shell_tip"), dim: true },
+          { kind: "text", text: t("tip"), dim: true },
+        ];
+      }},
+      "?": { hidden: true, usage: "?", hint: "= help", run: () => C.help.run() },
 
-      about: { hint: H("about"), run: () => {
+      about: { usage: "about", hint: H("about"), run: () => {
         const p = D().profile;
         const tag = D().intro.tagline[lang === "en" ? "en" : "ko"];
         const primary = lang === "ko" ? [`${p.name_ko} / ${p.name_en}`, `${p.role_ko} · ${p.affiliation_ko}`] : [`${p.name_en} / ${p.name_ko}`, `${p.role_en} · ${p.affiliation_en}`];
@@ -104,7 +123,7 @@
         ];
       }},
 
-      whoami: { hint: H("whoami"), run: () => {
+      whoami: { usage: "whoami", hint: H("whoami"), run: () => {
         const p = D().profile;
         const custom = window.getPromptName ? window.getPromptName() : "anonymous";
         if (custom && custom !== "anonymous") {
@@ -117,36 +136,59 @@
         return [{ kind: "text", text: lang === "ko" ? `${p.name_ko} (${p.name_en}) — ${p.role_ko}` : `${p.name_en} (${p.name_ko}) — ${p.role_en}` }];
       }},
 
-      research: { hint: H("research"), run: () => {
-        const rows = D().research.map(r => [r.tag, lang === "ko" ? `${r.title_ko} — ${r.blurb}` : `${r.title_en} — ${r.blurb}`]);
-        return [{ kind: "text", text: t("research_h") + ":", strong: true }, { kind: "kv", rows }];
+      research: { usage: "research", hint: H("research"), run: () => {
+        const rows = D().research.map(r => [r.tag, lang === "ko" ? `${r.title_ko} — ${r.blurb_ko}` : `${r.title_en} — ${r.blurb_en}`]);
+        return [{ kind: "text", text: t("research_h") + ":", strong: true }, ...kvLines(rows)];
       }},
 
-      ls: { hint: H("ls"), run: (args) => window.FS.ls(args) },
-      cd: { hint: lang === "ko" ? "디렉토리 이동 (cd projects, cd .., cd ~)" : "change directory (cd projects, cd .., cd ~)", run: (args) => window.FS.cd(args) },
-      pwd: { hint: lang === "ko" ? "현재 경로" : "print working directory", run: () => window.FS.pwd() },
-      tree: { hint: lang === "ko" ? "디렉토리 트리 (tree, tree projects, tree -a)" : "directory tree (tree, tree projects, tree -a)", run: (args) => window.FS.tree(args) },
-      find: { hint: lang === "ko" ? "파일 찾기 (find /, find . -name *.md)" : "find files (find /, find . -name *.md)", run: (args) => window.FS.find(args, lang) },
-      grep: { hint: lang === "ko" ? "내용 검색 (grep -i pattern /path)" : "search contents (grep -i pattern /path)", run: (args) => window.FS.grep(args, lang) },
+      ls: { group: "shell", usage: "ls [-alrt] [path]", hint: H("ls"), run: (args, stdin, lang, piped) => window.FS.ls(args, piped) },
+      cd: { group: "shell", usage: "cd [path]", hint: lang === "ko" ? "디렉토리 이동 (cd projects, cd .., cd ~)" : "change directory (cd projects, cd .., cd ~)", run: (args) => window.FS.cd(args) },
+      pwd: { group: "shell", usage: "pwd", hint: lang === "ko" ? "현재 경로" : "print working directory", run: () => window.FS.pwd() },
+      tree: { group: "shell", usage: "tree [-a] [path]", hint: lang === "ko" ? "디렉토리 트리 (tree, tree projects, tree -a)" : "directory tree (tree, tree projects, tree -a)", run: (args) => window.FS.tree(args) },
+      find: { group: "shell", usage: "find [path] [-a] [-name <glob>]", hint: lang === "ko" ? "파일 찾기 (find /, find . -name *.md)" : "find files (find /, find . -name *.md)", run: (args) => window.FS.find(args) },
+      grep: { group: "shell", usage: "grep [-i] [-n] [-a] [-v] <pattern> [path]", hint: lang === "ko" ? "내용 검색 (grep -i pattern /path)" : "search contents (grep -i pattern /path)", run: (args, stdin) => window.FS.grep(args, lang, stdin) },
       history: {
+        group: "shell", usage: "history [-c]",
         hint: lang === "ko" ? "입력한 명령 히스토리" : "show command history",
-        run: () => {
+        run: (args) => {
+          if (args && args[0] === "-c") return [{ kind: "mode", action: "history-clear" }];
           const stack = window.TERM_HISTORY || [];
           if (!stack.length) return [{ kind: "text", text: lang === "ko" ? "(기록 없음)" : "(empty)", dim: true }];
           return stack.map((cmd, i) => ({ kind: "text", text: `  ${String(i + 1).padStart(4)}  ${cmd}` }));
         },
       },
       weather: {
+        usage: "weather [city]",
         hint: lang === "ko" ? "현재 날씨 (weather, weather seoul)" : "current weather (weather, weather seoul)",
         run: (args) => [{ kind: "weather", location: args[0] || "Daegu" }],
       },
 
-      projects: { hint: H("projects"), run: () => [
-        { kind: "text", text: t("projects_h"), strong: true },
-        { kind: "grid", items: D().projects, lang },
-      ]},
+      projects: { usage: "projects", hint: H("projects"), run: () => {
+        const P = window.TEXT.padEnd;
+        const items = D().projects;
+        const wSlug = items.reduce((m, p) => Math.max(m, window.TEXT.cells(p.slug)), 4);
+        const wTitle = items.reduce((m, p) => Math.max(m, window.TEXT.cells(lang === "ko" ? p.title_ko : p.title_en)), 5);
+        return [
+          { kind: "text", text: `${P("SLUG", wSlug + 2)}${P("YEAR", 6)}${P("TITLE", wTitle + 2)}STACK`, dim: true },
+          ...items.map(p => {
+            const title = lang === "ko" ? p.title_ko : p.title_en;
+            return {
+              kind: "text",
+              text: `${P(p.slug, wSlug + 2)}${P(p.year, 6)}${P(title, wTitle + 2)}${p.stack.join(", ")}`,
+              parts: [
+                { t: P(p.slug, wSlug + 2), c: "key" },
+                { t: P(p.year, 6), c: "num" },
+                { t: P(title, wTitle + 2) },
+                { t: p.stack.join(", "), c: "meta" },
+              ],
+            };
+          }),
+          { kind: "text", text: "" },
+          { kind: "text", text: t("projects_h"), dim: true },
+        ];
+      }},
 
-      cat: { hint: H("cat"), run: (args) => {
+      cat: { usage: "cat <slug|path...>", hint: H("cat"), run: (args) => {
         if (!args.length) return [{ kind: "text", text: t("cat_usage"), warn: true }];
         // First try as a project slug (pretty view)
         const p = D().projects.find(x => x.slug === args[0]);
@@ -165,86 +207,92 @@
         return window.FS.cat(args);
       }},
 
-      publications: { hint: H("publications"), run: () => [
+      publications: { usage: "publications", hint: H("publications"), run: () => [
         { kind: "text", text: t("pubs_h") + ":", strong: true },
         ...D().publications.map(p => ({ kind: "text", text: `  ${p.year}  ${p.venue.padEnd(10)} ${p.title} (${p.role})` })),
       ]},
 
-      experience: { hint: H("experience"), run: () => [
+      experience: { usage: "experience", hint: H("experience"), run: () => [
         { kind: "text", text: t("exp_h") + ":", strong: true },
-        { kind: "kv", rows: D().experience.map(e => [e.when, lang === "ko" ? `${e.what_ko} — ${e.where}` : `${e.what_en} — ${e.where}`]) },
+        ...kvLines(D().experience.map(e => [e.when, lang === "ko" ? `${e.what_ko} - ${e.where_ko}` : `${e.what_en} - ${e.where_en}`])),
       ]},
 
-      skills: { hint: H("skills"), run: () => {
+      skills: { usage: "skills", hint: H("skills"), run: () => {
         const s = D().skills;
-        return [{ kind: "kv", rows: [
+        return kvLines([
           ["languages", s.languages.join(", ")],
           ["tools",     s.tools.join(", ")],
           ["research",  s.research.join(", ")],
-        ] }];
+        ]);
       }},
 
-      now: { hint: H("now"), run: (args) => {
+      now: { usage: "now [--week|--month]", hint: H("now"), run: (args) => {
         const mode = args[0] === "--week" ? "week" : args[0] === "--month" ? "month" : "today";
         return [{ kind: "now", view: mode, lang }];
       }},
 
-      contact: { hint: H("contact"), run: () => {
+      contact: { usage: "contact", hint: H("contact"), run: () => {
         const p = D().profile;
-        return [{ kind: "kv", rows: [
+        return kvLines([
           [t("email"),  p.email],
           ["github",    `github.com/${p.github}`],
           ["linkedin",  `linkedin.com/in/${p.linkedin}`],
           ["scholar",   p.scholar || t("scholar_soon")],
           ["til",       D().site.til],
-        ] }];
+        ]);
       }},
 
-      cv: { hint: H("cv"), run: () => [
+      cv: { usage: "cv", hint: H("cv"), run: () => [
         { kind: "text", text: t("cv_open") },
-        { kind: "link", href: D().site.cvPath, text: t("cv_link") },
+        { kind: "link", href: D().site.cvKo, text: t("cv_ko") },
+        { kind: "link", href: D().site.cvEn, text: t("cv_en") },
       ]},
 
-      til: { hint: H("til"), run: () => [
+      til: { usage: "til", hint: H("til"), run: () => [
         { kind: "text", text: t("til_go") },
         { kind: "link", href: D().site.tilUrl, text: t("til_link") },
       ]},
 
-      chat: { hint: H("chat"), run: () => [
+      chat: { usage: "chat", hint: H("chat"), run: () => [
         { kind: "mode", action: "chat" },
         { kind: "text", text: t("chat_intro") },
         { kind: "text", text: t("chat_info"), dim: true },
       ]},
 
-      theme: { hint: H("theme"), run: (args) => {
+      theme: { usage: "theme [name]", hint: H("theme"), run: (args) => {
         const k = args[0];
         if (!k) return [
           { kind: "text", text: t("theme_usage") },
-          { kind: "kv", rows: Object.entries(window.THEMES).map(([k, v]) => [k, lang === "ko" ? v.label_ko : v.name]) },
+          ...kvLines(Object.entries(window.THEMES).map(([k, v]) => [k, lang === "ko" ? v.label_ko : v.name])),
         ];
         if (!window.THEMES[k]) return [{ kind: "text", text: t("theme_unk", k), warn: true }];
         return [{ kind: "mode", action: "theme", value: k }, { kind: "text", text: `theme → ${k}`, dim: true }];
       }},
 
-      easy: { hint: H("easy"), run: () => [
+      easy: { usage: "easy", hint: H("easy"), run: () => [
         { kind: "mode", action: "easy" },
         { kind: "text", text: t("easy_msg"), dim: true },
       ]},
 
-      lang: { hint: H("lang"), run: (args) => {
+      lang: { usage: "lang ko|en", hint: H("lang"), run: (args) => {
         const l = args[0];
         if (!["ko", "en"].includes(l)) return [{ kind: "text", text: t("lang_usage"), warn: true }];
         return [{ kind: "mode", action: "lang", value: l }, { kind: "text", text: t("lang_set", l), dim: true }];
       }},
 
-      clear: { hint: H("clear"), run: () => [{ kind: "mode", action: "clear" }] },
+      clear: { usage: "clear", hint: H("clear"), run: () => [{ kind: "mode", action: "clear" }] },
 
-      sudo: { hidden: true, hint: "", run: () => [{ kind: "text", text: t("sudo"), warn: true }] },
     };
+
+    // coreutils.js stores hints as {ko,en}; resolve them for this language and mark
+    // them as shell tools so `help` can list them apart from the site commands.
+    for (const src of [window.COREUTILS, window.TOOLS]) {
+      for (const [name, def] of Object.entries(src || {})) {
+        C[name] = { ...def, group: "shell", hint: pick(def.hint, lang) };
+      }
+    }
     return C;
   }
-
-  const EMPTY_SUGGESTIONS = ["about", "projects", "research", "now", "chat", "contact", "easy", "help"];
 
   function parse(input) {
     const s = input.trim();
@@ -253,16 +301,49 @@
     return { cmd, args };
   }
 
-  function run(input, lang = "ko") {
-    const parsed = parse(input);
-    if (!parsed) return null;
-    // Easter eggs run first — they handle free-form input (e.g. "i am ...")
-    const egg = window.EGGS && window.EGGS.tryHandle(input, { lang });
-    if (egg) return egg;
-    const C = buildCommands(lang);
+  // Flatten a stage's blocks into lines so the next stage can read them as stdin.
+  // Rendered-component blocks (grid, now, weather) have no text form and drop out,
+  // which is roughly what piping a TUI into `wc` does anyway.
+  function blocksToLines(blocks) {
+    const lines = [];
+    for (const b of blocks || []) {
+      if (b.kind === "text") lines.push(b.text || "");
+      else if (b.kind === "kv") for (const [k, v] of b.rows) lines.push(`${k}  ${v}`);
+      else if (b.kind === "link") lines.push(b.text || b.href || "");
+    }
+    return lines;
+  }
+
+  // `piped` tells a command its output feeds another stage, the way a real program
+  // learns stdout is not a tty. ls uses it to switch to one entry per line.
+  function execOne(stage, lang, C, stdin, piped) {
+    const parsed = parse(stage);
+    if (!parsed) return [];
     const c = C[parsed.cmd];
-    if (!c) return [{ kind: "text", text: pick(S.nf, lang, parsed.cmd), warn: true }];
-    return c.run(parsed.args);
+    // Command table first, then the free-form handlers. The old order let a joke
+    // shadow any real command sharing its name.
+    if (c) return c.run(parsed.args, stdin, lang, piped) || [];
+    const extra = window.EXTRAS && window.EXTRAS.tryHandle(stage, { lang });
+    if (extra) return extra;
+    return [{ kind: "text", text: pick(S.nf, lang, parsed.cmd), warn: true }];
+  }
+
+  function run(input, lang = "ko") {
+    if (!parse(input)) return null;
+    const C = buildCommands(lang);
+    const stages = input.split("|").map(s => s.trim());
+    // A bar is not always a pipe: `:(){ :|:& };:` is a single shell construct.
+    // If the head of the pipeline is not a real command, treat the input as whole.
+    const piped = stages.length > 1 && stages.every(Boolean) &&
+                  C[(parse(stages[0]) || {}).cmd] !== undefined;
+    if (!piped) return execOne(input.trim(), lang, C, null, false);
+
+    let blocks = [], stdin = null;
+    stages.forEach((stage, i) => {
+      blocks = execOne(stage, lang, C, stdin, i < stages.length - 1);
+      stdin = blocksToLines(blocks);
+    });
+    return blocks;
   }
 
   function complete(prefix, lang = "ko") {
@@ -291,5 +372,5 @@
     return [];
   }
 
-  window.TERMINAL = { buildCommands, EMPTY_SUGGESTIONS, run, complete };
+  window.TERMINAL = { buildCommands, run, complete };
 })();

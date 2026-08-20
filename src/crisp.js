@@ -9,6 +9,8 @@
 
   window.$crisp = [];
   window.CRISP_WEBSITE_ID = WEBSITE_ID;
+  // prefs.js already applied the stored language to <html lang>, so this picks up
+  // a returning visitor's choice instead of always falling back to ko.
   window.CRISP_RUNTIME_CONFIG = {
     locale: document.documentElement.lang === "en" ? "en" : "ko",
   };

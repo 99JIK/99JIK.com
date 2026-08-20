@@ -59,14 +59,14 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     exp: "Experience & Education",
     skills: "Skills",
     role: "Role", location: "Location", email: "Email", github: "GitHub", linkedin: "LinkedIn", til: "TIL", cv: "CV",
-    cvAction: "download CV.pdf ↓",
+    cvKo: "Korean ↗", cvEn: "English ↗",
     chatAction: "chat live",
     chatTitle: "chat with jeongin",
     chatLive: "online",
     chatEmpty: "say hi — I'll reply here or on my phone.",
     chatPlaceholder: "type a message…",
     chatHint: "enter to send · esc to close",
-    foot: (y, name) => `© ${y} ${name} — made in Daegu, KR`,
+    foot: (name) => `© ${__BUILD_DATE__.slice(0, 4)} ${name} · made in Daegu, KR · updated ${__BUILD_DATE__}`,
   } : {
     crumb: "포트폴리오",
     backBtn: "⌘ Terminal Mode",
@@ -80,14 +80,14 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     exp: "경력 · 학력",
     skills: "스킬",
     role: "역할", location: "위치", email: "이메일", github: "깃허브", linkedin: "링크드인", til: "TIL", cv: "이력서",
-    cvAction: "CV.pdf 받기 ↓",
+    cvKo: "한국어 ↗", cvEn: "영문 ↗",
     chatAction: "실시간 채팅",
-    chatTitle: "Jeongin 과 채팅",
+    chatTitle: `${p.name_ko}과 채팅`,
     chatLive: "online",
     chatEmpty: "아무 말이나 남겨주세요. 여기 또는 폰으로 답장드려요.",
     chatPlaceholder: "메시지 입력…",
     chatHint: "엔터 전송 · ESC 닫기",
-    foot: (y, name) => `© ${y} ${name} — 대구에서 만듦`,
+    foot: (name) => `© ${__BUILD_DATE__.slice(0, 4)} ${name} · 대구에서 만듦 · ${__BUILD_DATE__} 업데이트`,
   };
 
   return (
@@ -110,7 +110,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
         </div>
       </div>
 
-      <div className="easy-doc">
+      <main className="easy-doc">
         <div className="easy-cover" aria-hidden="true">
           <div className="easy-cover-grid"/>
           <div className="easy-cover-mono">{"{ software × language-models }"}</div>
@@ -127,12 +127,16 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
 
         <div className="easy-props">
           <PropRow label={T.role}     value={lang === "en" ? `${p.role_en} at ${p.affiliation_en}` : `${p.role_ko} · ${p.affiliation_ko}`} />
-          <PropRow label={T.location} value={p.location} />
+          <PropRow label={T.location} value={lang === "en" ? p.location_en : p.location_ko} />
           <PropRow label={T.email}    value={<a href={`mailto:${p.email}`}>{p.email}</a>} />
           <PropRow label={T.github}   value={<a href={`https://github.com/${p.github}`} target="_blank" rel="noreferrer">@{p.github}</a>} />
           <PropRow label={T.linkedin} value={<a href={`https://linkedin.com/in/${p.linkedin}`} target="_blank" rel="noreferrer">jeongin-kim</a>} />
           <PropRow label={T.til}      value={<a href={p.til} target="_blank" rel="noreferrer">{d.site.til} ↗</a>} />
-          <PropRow label={T.cv}       value={<a href={d.site.cvPath}>{T.cvAction}</a>} />
+          <PropRow label={T.cv}       value={<>
+            <a href={d.site.cvKo} target="_blank" rel="noreferrer">{T.cvKo}</a>
+            <span className="easy-dim"> · </span>
+            <a href={d.site.cvEn} target="_blank" rel="noreferrer">{T.cvEn}</a>
+          </>} />
         </div>
 
         <Callout>
@@ -147,7 +151,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
               <div className="easy-tag">{r.tag}</div>
               <div>
                 <div className="easy-r-title">{lang === "en" ? r.title_en : r.title_ko}</div>
-                <div className="easy-r-blurb">{r.blurb}</div>
+                <div className="easy-r-blurb">{lang === "en" ? r.blurb_en : r.blurb_ko}</div>
               </div>
             </div>
           ))}
@@ -156,13 +160,18 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
         <H2>{T.now}</H2>
         <EasyCalendar lang={lang} />
 
-        <H2>{lang === "en" ? "Highlights" : "요즘 관심사"}</H2>
-        <ul className="easy-bullets">{d.now.map((n, i) => <li key={i}>{n}</li>)}</ul>
+        {d.now.length > 0 && (
+          <>
+            <H2>{lang === "en" ? "Highlights" : "요즘 관심사"}</H2>
+            <ul className="easy-bullets">{d.now.map((n, i) => <li key={i}>{n}</li>)}</ul>
+          </>
+        )}
 
         <H2>{T.projects} <span className="easy-h-en">({d.projects.length})</span></H2>
         <div className="easy-projects">
           {d.projects.map(pr => (
-            <a key={pr.slug} className="easy-proj" href={`#/projects/${pr.slug}`}>
+            <a key={pr.slug} className="easy-proj" target="_blank" rel="noreferrer"
+               href={pr.url || `https://github.com/${d.site.github}/${pr.slug}`}>
               <div className="easy-proj-h">
                 <span className="easy-proj-slug">{pr.slug}</span>
                 <span className="easy-proj-year">{pr.year}</span>
@@ -194,7 +203,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
               <div className="easy-exp-when">{e.when}</div>
               <div>
                 <div className="easy-exp-what">{lang === "en" ? e.what_en : e.what_ko}</div>
-                <div className="easy-dim">{lang === "en" ? e.what_ko : e.what_en} — {e.where}</div>
+                <div className="easy-dim">{lang === "en" ? e.what_ko : e.what_en} — {lang === "en" ? e.where_ko : e.where_en}</div>
               </div>
             </div>
           ))}
@@ -211,10 +220,10 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
         </div>
 
         <div className="easy-foot">
-          <div>{T.foot(d.site.copyrightYear, lang === "en" ? p.name_en : p.name_ko)}</div>
+          <div>{T.foot(lang === "en" ? p.name_en : p.name_ko)}</div>
           <div>TIL → <a href={p.til} target="_blank" rel="noreferrer">{d.site.til}</a></div>
         </div>
-      </div>
+      </main>
 
       {!chatOpen && (
         <button

@@ -1,4 +1,4 @@
-// Calendar loader. Fetches public/calendar.json (built hourly by GH Actions from ICAL_URL).
+// Calendar loader. Fetches public/calendar.json (rebuilt daily by GH Actions from ICAL_URL).
 // Gracefully falls back to an embedded mock so local dev always works.
 (function () {
   const MOCK = {
@@ -94,5 +94,9 @@
     return lang === "en" ? `${Math.round(diff/86400)}d ago` : `${Math.round(diff/86400)}일 전`;
   }
 
-  window.CALENDAR = { load, getToday, getWeek, getMonth, fmtTime, fmtDay, relativeAgo };
+  // Synchronous read of whatever load() already fetched. `cal` marks busy days with
+  // it and simply marks nothing when the feed has not arrived yet.
+  const peek = () => CACHE;
+
+  window.CALENDAR = { load, peek, getToday, getWeek, getMonth, fmtTime, fmtDay, relativeAgo };
 })();

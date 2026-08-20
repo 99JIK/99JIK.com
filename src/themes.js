@@ -1,10 +1,15 @@
-// Theme system + Tweaks. Four themes, CSS custom properties applied on :root.
+// Theme system. Four themes, CSS custom properties applied on :root.
+//
+// Every color that carries text is kept at WCAG AA (4.5:1) or better against its own
+// background. `muted` matters more than it looks: roughly 15% of command output is
+// dimmed, so it is body text, not decoration. `faint` is the only decorative value.
+// Also owns the reduced-motion check, since every animated bit of the site gates on it.
 
 window.THEMES = {
   dark: {
     name: "Dark", label_ko: "진한 다크",
     bg: "#0c0c0d", panel: "#111114", titlebar: "#1a1a1c", border: "#232327",
-    fg: "#e6e6e3", muted: "#6b7280", faint: "rgba(230,230,227,0.32)",
+    fg: "#e6e6e3", muted: "#7b828e", faint: "rgba(230,230,227,0.32)",
     green: "#6ee7a8", cyan: "#7dd3fc", yellow: "#fcd34d", magenta: "#f0abfc", red: "#fb7185",
     accent: "#7dd3fc",
     chipBg: "#17171a", chipBorder: "#28282d", chipHover: "#1f1f23",
@@ -20,8 +25,8 @@ window.THEMES = {
   solarized: {
     name: "Solarized", label_ko: "솔라라이즈드",
     bg: "#002b36", panel: "#073642", titlebar: "#04313d", border: "#0f4654",
-    fg: "#93a1a1", muted: "#657b83", faint: "rgba(147,161,161,0.38)",
-    green: "#859900", cyan: "#2aa198", yellow: "#b58900", magenta: "#d33682", red: "#dc322f",
+    fg: "#93a1a1", muted: "#839496", faint: "rgba(147,161,161,0.38)",
+    green: "#859900", cyan: "#2aa198", yellow: "#b58900", magenta: "#d33682", red: "#ef6c6a",
     accent: "#2aa198",
     chipBg: "#083642", chipBorder: "#0f4654", chipHover: "#0c4152",
   },
@@ -43,4 +48,14 @@ window.applyTheme = function applyTheme(key) {
   });
   r.setProperty("--t-key", key);
   document.documentElement.setAttribute("data-theme", key);
+  // Mobile browser chrome was pinned to the dark bg regardless of the chosen theme.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", t.bg);
+};
+
+// Live check, not a snapshot: the OS setting can flip while the tab is open and the
+// banner animations re-read it per mount. matchMedia is absent in some embedded webviews.
+window.prefersReducedMotion = function prefersReducedMotion() {
+  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+  catch { return false; }
 };

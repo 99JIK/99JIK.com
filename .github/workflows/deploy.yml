@@ -43,6 +43,9 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Check
+        run: npm run check
+
       - name: Build
         run: npm run build
 
