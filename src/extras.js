@@ -76,7 +76,11 @@
     if (!/^(exit|quit|logout)$/i.test(raw)) return null;
     const current = window.getPromptName();
     if (!current || current === "anonymous") {
-      return [text(lang === "en" ? "logout: not login shell: use `exit`" : "logout: 로그인 셸이 아닙니다.", { warn: true })];
+      // Nothing to log out of, so this is the login shell exiting: close the window.
+      return [
+        { kind: "mode", action: "close-window" },
+        text("logout", { dim: true }),
+      ];
     }
     window.setPromptName(null);
     return [text(lang === "en" ? `logged out ${current}. back to anonymous.` : `로그아웃 (${current}). 다시 anonymous 입니다.`, { dim: true })];

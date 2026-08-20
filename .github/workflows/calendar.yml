@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: "20"
 
+      # No secret required: the feed URL is public and lives in src/data.js.
+      # Setting an ICAL_URL secret still overrides it, for a private calendar.
       - name: Fetch & transform calendar
         env:
           ICAL_URL: ${{ secrets.ICAL_URL }}

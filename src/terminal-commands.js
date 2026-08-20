@@ -27,6 +27,8 @@
     cv_open:     { ko: "CV 링크입니다. 한국어판과 영문판이 따로 있어요.", en: "CV is available in Korean and English." },
     cv_ko:       { ko: "CV (한국어) 열기 ↗", en: "CV (Korean) ↗" },
     cv_en:       { ko: "CV (영문) 열기 ↗", en: "CV (English) ↗" },
+    book_msg:    { ko: "빈 시간을 골라 바로 잡으시면 됩니다.", en: "Pick an open slot and it books itself." },
+    book_link:   { ko: "시간 예약하기 ↗", en: "Book a time ↗" },
     til_go:      { ko: () => `→ ${D().site.til} 으로 이동합니다`, en: () => `→ heading to ${D().site.til}` },
     til_link:    { ko: () => `${D().site.til} 열기 ↗`, en: () => `open ${D().site.til} ↗` },
     nf:          { ko: (c) => `명령을 찾지 못했어요: ${c} — 'help' 또는 '?' 를 눌러보세요`, en: (c) => `command not found: ${c} — try 'help' or '?'` },
@@ -45,7 +47,6 @@
     hints: {
       help:     { ko: "사용 가능한 명령을 모두 보여줘요", en: "Show all available commands" },
       about:    { ko: "짧은 자기소개", en: "Short introduction" },
-      whoami:   { ko: "한 줄 소개", en: "One-line intro" },
       research: { ko: "연구 관심사", en: "Research interests" },
       ls:       { ko: "파일 목록 보기", en: "List files" },
       projects: { ko: "프로젝트 전부 보기", en: "View all projects" },
@@ -64,6 +65,7 @@
         ko: () => `${D().profile.name_ko}에게 메시지 보내기`,
         en: () => `Send ${D().profile.name_en.split(" ")[0]} a message`,
       },
+      book:     { ko: "만날 시간 예약하기", en: "Book a time to talk" },
       theme:    { ko: "테마 변경", en: "Change theme" },
       easy:     { ko: "Easy Mode (일반 뷰) 전환", en: "Switch to Easy Mode" },
       lang:     { ko: "언어 (ko|en) 전환", en: "Switch language (ko|en)" },
@@ -123,36 +125,25 @@
         ];
       }},
 
-      whoami: { usage: "whoami", hint: H("whoami"), run: () => {
-        const p = D().profile;
-        const custom = window.getPromptName ? window.getPromptName() : "anonymous";
-        if (custom && custom !== "anonymous") {
-          return [
-            { kind: "text", text: lang === "ko" ? `당신: ${custom}` : `you: ${custom}`, strong: true },
-            { kind: "text", text: lang === "ko" ? `(이 사이트의 주인은: ${p.name_ko} / ${p.name_en} — ${p.role_ko})` : `(site owner: ${p.name_en} / ${p.name_ko} — ${p.role_en})`, dim: true },
-            { kind: "text", text: lang === "ko" ? `로그아웃: 'exit'` : `log out: 'exit'`, dim: true },
-          ];
-        }
-        return [{ kind: "text", text: lang === "ko" ? `${p.name_ko} (${p.name_en}) — ${p.role_ko}` : `${p.name_en} (${p.name_ko}) — ${p.role_en}` }];
-      }},
-
       research: { usage: "research", hint: H("research"), run: () => {
         const rows = D().research.map(r => [r.tag, lang === "ko" ? `${r.title_ko} — ${r.blurb_ko}` : `${r.title_en} — ${r.blurb_en}`]);
         return [{ kind: "text", text: t("research_h") + ":", strong: true }, ...kvLines(rows)];
       }},
 
-      ls: { group: "shell", usage: "ls [-alrt] [path]", hint: H("ls"), run: (args, stdin, lang, piped) => window.FS.ls(args, piped) },
+      ls: { group: "shell", usage: "ls [-alrtS1] [path]", hint: H("ls"), run: (args, stdin, lang, piped) => window.FS.ls(args, piped) },
       cd: { group: "shell", usage: "cd [path]", hint: lang === "ko" ? "디렉토리 이동 (cd projects, cd .., cd ~)" : "change directory (cd projects, cd .., cd ~)", run: (args) => window.FS.cd(args) },
       pwd: { group: "shell", usage: "pwd", hint: lang === "ko" ? "현재 경로" : "print working directory", run: () => window.FS.pwd() },
-      tree: { group: "shell", usage: "tree [-a] [path]", hint: lang === "ko" ? "디렉토리 트리 (tree, tree projects, tree -a)" : "directory tree (tree, tree projects, tree -a)", run: (args) => window.FS.tree(args) },
-      find: { group: "shell", usage: "find [path] [-a] [-name <glob>]", hint: lang === "ko" ? "파일 찾기 (find /, find . -name *.md)" : "find files (find /, find . -name *.md)", run: (args) => window.FS.find(args) },
-      grep: { group: "shell", usage: "grep [-i] [-n] [-a] [-v] <pattern> [path]", hint: lang === "ko" ? "내용 검색 (grep -i pattern /path)" : "search contents (grep -i pattern /path)", run: (args, stdin) => window.FS.grep(args, lang, stdin) },
+      tree: { group: "shell", usage: "tree [-a] [-L N] [path]", hint: lang === "ko" ? "디렉토리 트리 (tree, tree projects, tree -a)" : "directory tree (tree, tree projects, tree -a)", run: (args) => window.FS.tree(args) },
+      find: { group: "shell", usage: "find [path] [-a] [-type f|d|l] [-name <glob>]", hint: lang === "ko" ? "파일 찾기 (find /, find . -name *.md)" : "find files (find /, find . -name *.md)", run: (args) => window.FS.find(args) },
+      grep: { group: "shell", usage: "grep [-inavcl] [-A N] [-B N] [-C N] <pattern> [path]", hint: lang === "ko" ? "내용 검색 (grep -i pattern /path)" : "search contents (grep -i pattern /path)", run: (args, stdin) => window.FS.grep(args, lang, stdin) },
       history: {
-        group: "shell", usage: "history [-c]",
+        group: "shell", usage: "history [-c] [N]",
         hint: lang === "ko" ? "입력한 명령 히스토리" : "show command history",
         run: (args) => {
           if (args && args[0] === "-c") return [{ kind: "mode", action: "history-clear" }];
-          const stack = window.TERM_HISTORY || [];
+          const limit = args && /^[0-9]+$/.test(args[0] || "") ? parseInt(args[0], 10) : null;
+          let stack = window.TERM_HISTORY || [];
+          if (limit) stack = stack.slice(-limit);
           if (!stack.length) return [{ kind: "text", text: lang === "ko" ? "(기록 없음)" : "(empty)", dim: true }];
           return stack.map((cmd, i) => ({ kind: "text", text: `  ${String(i + 1).padStart(4)}  ${cmd}` }));
         },
@@ -194,7 +185,7 @@
         const p = D().projects.find(x => x.slug === args[0]);
         if (p && args.length === 1) {
           return [
-            { kind: "text", text: `── ${lang === "ko" ? p.title_ko : p.title_en} (${p.year}) ─────`, strong: true },
+            { kind: "text", text: `--- ${lang === "ko" ? p.title_ko : p.title_en} (${p.year}) ---`, strong: true },
             { kind: "text", text: `${t("stack")}: ${p.stack.join(", ")}`, dim: true },
             { kind: "text", text: "" },
             { kind: "text", text: lang === "ko" ? p.summary_ko : p.summary_en },
@@ -239,6 +230,7 @@
           ["linkedin",  `linkedin.com/in/${p.linkedin}`],
           ["scholar",   p.scholar || t("scholar_soon")],
           ["til",       D().site.til],
+          ["booking",   D().site.bookingUrl],
         ]);
       }},
 
@@ -246,6 +238,11 @@
         { kind: "text", text: t("cv_open") },
         { kind: "link", href: D().site.cvKo, text: t("cv_ko") },
         { kind: "link", href: D().site.cvEn, text: t("cv_en") },
+      ]},
+
+      book: { usage: "book", hint: H("book"), run: () => [
+        { kind: "text", text: t("book_msg") },
+        { kind: "link", href: D().site.bookingUrl, text: t("book_link") },
       ]},
 
       til: { usage: "til", hint: H("til"), run: () => [
@@ -309,7 +306,8 @@
     for (const b of blocks || []) {
       if (b.kind === "text") lines.push(b.text || "");
       else if (b.kind === "kv") for (const [k, v] of b.rows) lines.push(`${k}  ${v}`);
-      else if (b.kind === "link") lines.push(b.text || b.href || "");
+      // A pipe carries data, not UI text: send the URL, not the button label.
+      else if (b.kind === "link") lines.push(b.href || b.text || "");
     }
     return lines;
   }
@@ -346,28 +344,55 @@
     return blocks;
   }
 
+  // Completion is derived from each command's own `usage` string rather than a
+  // hardcoded list, so a new command that documents itself gets completion for free.
+  //   "...<file>" / "[path]" / "<dir>"  -> filesystem paths
+  //   "...<command>"                    -> other command names
+  function completionKind(cmd) {
+    const u = String(cmd && cmd.usage || "");
+    if (/\b(file|path|dir)\b/.test(u)) return "path";
+    if (/\bcommand\b/.test(u)) return "command";
+    return null;
+  }
+
   function complete(prefix, lang = "ko") {
-    const s = prefix.trim();
-    if (!s) return [];
-    const parts = s.split(/\s+/);
+    const raw = String(prefix).replace(/^\s+/, "");
+    if (!raw) return [];
     const C = buildCommands(lang);
-    if (parts.length === 1) {
+    const parts = raw.split(/\s+/).filter(Boolean);   // "vi " must not yield an empty tail
+    // A trailing space means "start a new word", so `vi ` lists everything.
+    const trailing = /\s$/.test(prefix);
+
+    if (parts.length === 1 && !trailing) {
       return Object.keys(C).filter(k => !C[k].hidden && k.startsWith(parts[0]));
     }
-    if (parts[0] === "cat" && parts.length === 2) {
-      // combine FS completion + project slugs
-      const fs = window.FS ? window.FS.complete(parts[1]) : [];
-      const slugs = window.SITE_DATA.projects.map(p => p.slug).filter(s => s.startsWith(parts[1]));
-      return [...new Set([...fs, ...slugs])].map(s => `cat ${s}`);
+
+    const cmd = C[parts[0]];
+    if (!cmd) return [];
+    const frag = trailing ? "" : parts[parts.length - 1];
+    const head = (trailing ? parts : parts.slice(0, -1)).join(" ") + " ";
+
+    // Options are their own thing; do not offer paths for a half-typed flag.
+    if (frag.startsWith("-")) return [];
+
+    if (parts[0] === "theme") {
+      return Object.keys(window.THEMES).filter(k => k.startsWith(frag)).map(k => head + k);
     }
-    if ((parts[0] === "ls" || parts[0] === "cd" || parts[0] === "tree" || parts[0] === "find") && parts.length === 2) {
-      return (window.FS ? window.FS.complete(parts[1]) : []).map(s => `${parts[0]} ${s}`);
+    if (parts[0] === "lang") {
+      return ["ko", "en"].filter(k => k.startsWith(frag)).map(k => head + k);
     }
-    if (parts[0] === "theme" && parts.length === 2) {
-      return Object.keys(window.THEMES).filter(s => s.startsWith(parts[1])).map(s => `theme ${s}`);
+
+    const kind = completionKind(cmd);
+    if (kind === "command") {
+      return Object.keys(C).filter(k => !C[k].hidden && k.startsWith(frag)).map(k => head + k);
     }
-    if (parts[0] === "lang" && parts.length === 2) {
-      return ["ko", "en"].filter(s => s.startsWith(parts[1])).map(s => `lang ${s}`);
+    if (kind === "path") {
+      const paths = window.FS ? window.FS.complete(frag) : [];
+      // `cat` also takes a project slug, which is not a real path.
+      const slugs = parts[0] === "cat"
+        ? window.SITE_DATA.projects.map(p => p.slug).filter(x => x.startsWith(frag))
+        : [];
+      return [...new Set([...paths, ...slugs])].map(x => head + x);
     }
     return [];
   }

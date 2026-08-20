@@ -455,6 +455,7 @@
     let entries = Object.entries(node.children);
     if (!flags.has("a")) entries = entries.filter(([n, e]) => !n.startsWith(".") && !e.hidden);
     if (flags.has("t")) entries.sort((a, b) => b[1].mtime - a[1].mtime);
+    else if (flags.has("S")) entries.sort((a, b) => (b[1].size || 0) - (a[1].size || 0));
     else entries.sort((a, b) => a[0].localeCompare(b[0]));
     if (flags.has("r")) entries.reverse();
     return formatLs(entries, path, flags, piped);
@@ -488,8 +489,8 @@
         c: e.type === "dir" ? "dir" : e.type === "link" ? "link" : (n.startsWith(".") || e.hidden) ? "faint" : null,
       });
       // Real ls goes one-per-line when stdout is not a tty, which is what makes
-      // `ls | wc -l` mean anything.
-      if (piped) entries.forEach(en => { const d = decorate(en); blocks.push({ kind: "text", text: d.t, parts: [d] }); });
+      // `ls | wc -l` mean anything. -1 asks for it explicitly.
+      if (piped || flags.has("1")) entries.forEach(en => { const d = decorate(en); blocks.push({ kind: "text", text: d.t, parts: [d] }); });
       else if (!entries.length) blocks.push({ kind: "text", text: "(empty)", dim: true });
       else {
         const parts = [];
@@ -559,9 +560,16 @@
     return names;
   }
 
-  // tree: recursive, Unicode box-drawing branches. `-a` to include hidden files.
+  // tree: recursive, ASCII branches. `-a` to include hidden files.
   function tree(args) {
-    const { flags, rest } = parseArgs(args);
+    // -L takes a number, which parseArgs would otherwise shred into flags.
+    let maxDepth = Infinity;
+    const argv = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "-L" && /^[0-9]+$/.test(args[i + 1] || "")) maxDepth = parseInt(args[++i], 10);
+      else argv.push(args[i]);
+    }
+    const { flags, rest } = parseArgs(argv);
     const target = rest[0] || cwd;
     const { path, node } = resolve(target);
     if (!node) return [{ kind: "text", text: `tree: ${target}: No such file or directory`, warn: true }];
@@ -574,21 +582,24 @@
     const header = path === "/" ? `${window.SITE_DATA.site.domain}/` : "." + path;
     lines.push({ kind: "text", text: header });
 
-    function walk(dirNode, prefix) {
+    function walk(dirNode, prefix, depth = 1) {
+      if (depth > maxDepth) return;
       let entries = Object.entries(dirNode.children);
       if (!showHidden) entries = entries.filter(([n, e]) => !n.startsWith(".") && !e.hidden);
       entries.sort(([a], [b]) => a.localeCompare(b));
 
       entries.forEach(([name, child], i) => {
         const isLast = i === entries.length - 1;
-        const branch = isLast ? "└── " : "├── ";
-        const nextPrefix = prefix + (isLast ? "    " : "│   ");
+        // ASCII branches, like `tree --charset=ascii`. The Unicode ones are
+        // ambiguous-width and shear the indentation under a CJK fallback font.
+        const branch = isLast ? "`-- " : "|-- ";
+        const nextPrefix = prefix + (isLast ? "    " : "|   ");
         let display;
         if (child.type === "dir") { display = name + "/"; counts.dirs++; }
         else if (child.type === "link") { display = `${name} -> ${child.target}`; counts.files++; }
         else { display = name; counts.files++; }
         lines.push({ kind: "text", text: prefix + branch + display });
-        if (child.type === "dir") walk(child, nextPrefix);
+        if (child.type === "dir") walk(child, nextPrefix, depth + 1);
       });
     }
 
@@ -608,9 +619,10 @@
     // single-char flags, so -name used to set the `a` flag as a side effect (hidden
     // files always shown) and leave the pattern sitting in rest[0] as a bogus start path.
     const argv = [];
-    let pattern = null;
+    let pattern = null, typeFilter = null;
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "-name" && args[i + 1] !== undefined) pattern = args[++i].replace(/^["']|["']$/g, "");
+      else if (args[i] === "-type" && args[i + 1] !== undefined) typeFilter = args[++i];
       else argv.push(args[i]);
     }
     const { flags, rest } = parseArgs(argv);
@@ -628,7 +640,11 @@
 
     function walk(n, p) {
       const name = p === "/" ? "/" : p.slice(p.lastIndexOf("/") + 1);
-      if (!re || re.test(name)) results.push(p);
+      const typeOk = !typeFilter
+        || (typeFilter === "f" && n.type === "file")
+        || (typeFilter === "d" && n.type === "dir")
+        || (typeFilter === "l" && n.type === "link");
+      if (typeOk && (!re || re.test(name))) results.push(p);
       if (n.type !== "dir") return;
       for (const [cn, ch] of Object.entries(n.children)) {
         if (!showHidden && (cn.startsWith(".") || ch.hidden)) continue;
@@ -654,7 +670,21 @@
   //   grep -n <pattern> <path>    — show line numbers
   //   grep -a <pattern> <path>    — include hidden files
   function grep(args, lang, stdin) {
-    const { flags, rest } = parseArgs(args);
+    // -A/-B/-C take counts, so pull them out before flag splitting.
+    let after = 0, before = 0;
+    const argv = [];
+    for (let i = 0; i < args.length; i++) {
+      const m = String(args[i]).match(/^-([ABC])([0-9]*)$/);
+      if (m) {
+        const n = m[2] !== "" ? parseInt(m[2], 10)
+                : /^[0-9]+$/.test(args[i + 1] || "") ? parseInt(args[++i], 10) : 2;
+        if (m[1] !== "B") after = n;
+        if (m[1] !== "A") before = n;
+        continue;
+      }
+      argv.push(args[i]);
+    }
+    const { flags, rest } = parseArgs(argv);
     if (rest.length < 1) return [{ kind: "text", text: "usage: grep [-i] [-n] [-a] [-v] <pattern> [path]", warn: true }];
     const pattern = rest[0];
     const target = rest[1] || cwd;
@@ -669,7 +699,7 @@
     // the real thing reading from a pipe instead of walking a tree.
     if (stdin) {
       const out = stdin.filter(hit)
-        .map((l, i) => ({ kind: "text", text: showLine ? `${i + 1}: ${l}` : (l || " ") }));
+        .map((l, i) => ({ kind: "text", text: showLine ? `${i + 1}: ${l}` : (l) }));
       return out.length ? out : [{ kind: "text", text: "(no matches)", dim: true }];
     }
 
@@ -679,11 +709,18 @@
     const results = [];
     function grepFile(f, p) {
       if (!f.content) return;
+      const marks = new Set();
       f.content.forEach((line, i) => {
-        if (hit(line)) {
-          const prefix = showLine ? `${p}:${i + 1}: ` : `${p}: `;
-          results.push(prefix + line);
-        }
+        if (!hit(line)) return;
+        marks.add(i);
+        for (let k = 1; k <= before; k++) if (i - k >= 0) marks.add(i - k);
+        for (let k = 1; k <= after; k++) if (i + k < f.content.length) marks.add(i + k);
+      });
+      [...marks].sort((a, b) => a - b).forEach(i => {
+        // Context lines use a dash separator, matching GNU grep.
+        const sep = hit(f.content[i]) ? ":" : "-";
+        const prefix = showLine ? `${p}${sep}${i + 1}${sep} ` : `${p}${sep} `;
+        results.push(prefix + f.content[i]);
       });
     }
     function walk(n, p) {
@@ -698,6 +735,15 @@
       }
     }
     walk(node, rootPath);
+
+    // -c counts, -l names the files. Both beat scrolling a full match list when
+    // the question is "how many" or "where".
+    if (flags.has("c")) return [{ kind: "text", text: String(results.length) }];
+    if (flags.has("l")) {
+      const files = [...new Set(results.map(r => r.slice(0, r.indexOf(":"))))];
+      return files.length ? files.map(f => ({ kind: "text", text: f }))
+                          : [{ kind: "text", text: "(no matches)", dim: true }];
+    }
 
     const MAX = 200;
     const out = [];

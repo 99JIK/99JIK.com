@@ -3,14 +3,24 @@
 // Pulls the iCal secret URL, filters private events, writes public/calendar.json.
 // Run by .github/workflows/calendar.yml once a day (20:00 UTC / 05:00 KST).
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-const ICAL_URL = process.env.ICAL_URL;
+// The feed URL lives in src/data.js so the site and this script cannot disagree
+// about which calendar is being published. ICAL_URL still overrides it, which is
+// how you point at a private feed without editing the repo.
+function siteData() {
+  const win = {};
+  new Function("window", readFileSync("src/data.js", "utf8"))(win);
+  return win.SITE_DATA;
+}
+
+const ICAL_URL = process.env.ICAL_URL || siteData().site.icalUrl;
 if (!ICAL_URL) {
-  console.error("ICAL_URL env var missing");
+  console.error("no calendar URL: set ICAL_URL or site.icalUrl in src/data.js");
   process.exit(1);
 }
+console.log(`source: ${process.env.ICAL_URL ? "ICAL_URL env" : "src/data.js site.icalUrl"}`);
 
 // Minimal .ics parser — handles VEVENT blocks with DTSTART/DTEND/SUMMARY/LOCATION/CATEGORIES.
 // Good enough for Google Calendar's "private address → iCal" output.
@@ -91,8 +101,14 @@ async function main() {
   const ics = await fetchWithRetry(ICAL_URL);
   const raw = parseICS(ics);
 
-  const horizonStart = new Date(); horizonStart.setDate(horizonStart.getDate() - 1); horizonStart.setHours(0,0,0,0);
-  const horizonEnd = new Date();   horizonEnd.setDate(horizonEnd.getDate() + 45);
+  // Keep a wide window and let the browser do the date arithmetic. calendar.js
+  // already filters by today for `now`, `cal` and the desktop, so slicing to a
+  // few weeks here only made the snapshot go stale the moment it was written.
+  // With a year on either side, a sync that does not run degrades gracefully
+  // instead of emptying the site.
+  const now = new Date();
+  const from = new Date(now); from.setFullYear(now.getFullYear() - 1);
+  const to   = new Date(now); to.setFullYear(now.getFullYear() + 1);
 
   const events = raw
     .filter(e => e.start && e.end && e.title)
@@ -107,14 +123,14 @@ async function main() {
     }))
     .filter(e => {
       const s = new Date(e.start);
-      return s >= horizonStart && s <= horizonEnd;
+      return s >= from && s <= to;
     })
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   const out = {
     updated: new Date().toISOString(),
     source: "google-calendar-ical",
-    horizon_days: 45,
+    window: "-1y..+1y",
     count: events.length,
     events,
   };

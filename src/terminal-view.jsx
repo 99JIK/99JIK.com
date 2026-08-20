@@ -7,13 +7,21 @@ import { ViEditor } from "./vi-editor.jsx";
 
 function Block({ block, lang }) {
   if (block.kind === "text") {
-    return (
-      <div className={"t-line" + (block.dim ? " dim" : "") + (block.warn ? " warn" : "") + (block.strong ? " strong" : "")}>
-        {block.text || " "}
-      </div>
-    );
+    const cls = "t-line" + (block.dim ? " dim" : "") + (block.warn ? " warn" : "") + (block.strong ? " strong" : "");
+    // `parts` paints segments of one line, the way ls --color and lolcat do. Still a
+    // single monospace line: alignment lives in the text, colour only sits on top.
+    if (block.parts) {
+      return (
+        <div className={cls}>
+          {block.parts.map((p, i) => p.c ? <span key={i} className={"t-c-" + p.c}>{p.t}</span> : p.t)}
+        </div>
+      );
+    }
+    return <div className={cls}>{block.text || " "}</div>;
   }
   if (block.kind === "weather") return <WeatherBlock location={block.location} />;
+  if (block.kind === "fetch") return <FetchBlock url={block.url} head={block.head} />;
+  if (block.kind === "qr") return <QrBlock grid={block.grid} caption={block.caption} />;
   if (block.kind === "now") return <NowBlock view={block.view} lang={lang} />;
   if (block.kind === "link") {
     return <a className="t-link" href={block.href} target="_blank" rel="noreferrer">{block.text}</a>;
@@ -84,7 +92,7 @@ function columnize(items, width = 80) {
   return rows.map(text => ({ kind: "text", text }));
 }
 
-function TerminalView({ onModeChange, onTheme, lang, onLang }) {
+function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
   const [history, setHistory] = React.useState([]);
   const [input, setInput] = React.useState("");
   const [caret, setCaret] = React.useState(0);
@@ -289,6 +297,9 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
       if (mode.action === "lang") onLang && onLang(mode.value);
       if (mode.action === "chat") setChatOn(true);
       if (mode.action === "vi") setVi({ path: mode.path, lines: mode.lines });
+      // `exit` from the login shell closes the window, which is what exiting a
+      // login shell does on a real desktop.
+      if (mode.action === "close-window" && wm && wm.onClose) setTimeout(wm.onClose, 250);
       if (mode.action === "matrix") { setMatrixOn(true); setTimeout(() => setMatrixOn(false), 3500); }
     }
   };
@@ -379,7 +390,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
       if (!opts.length) return;
       if (opts.length === 1) { setLine(opts[0] + " "); return; }
       const common = longestCommonPrefix(opts);
-      if (common.length > input.trim().length) { setLine(common); return; }
+      if (common.length > input.length) { setLine(common); return; }
       // Second consecutive Tab lists the candidates, then the prompt is redrawn.
       if (++tabRef.current >= 2) {
         setHistory(h => [...h, { type: "prompt", cmd: input, chat: false, path: currentPath(), user: promptName },
@@ -426,7 +437,8 @@ function TerminalView({ onModeChange, onTheme, lang, onLang }) {
   return (
     <div className="term-shell" onClick={() => inputRef.current && inputRef.current.focus()}>
       <TermTitleBar lang={lang} onLang={onLang} onEasy={() => onModeChange && onModeChange("easy")}
-                    chatOn={chatOn} onExitChat={() => handleChat("/exit")} user={promptName} path={promptPath} />
+                    chatOn={chatOn} onExitChat={() => handleChat("/exit")} user={promptName} path={promptPath}
+                    wm={wm} />
 
       {vi ? (
         <ViEditor
@@ -808,10 +820,29 @@ function TermBanner({ lang, T }) {
   );
 }
 
-function TermTitleBar({ lang, onLang, onEasy, chatOn, onExitChat, user, path }) {
+function TermTitleBar({ lang, onLang, onEasy, chatOn, onExitChat, user, path, wm }) {
+  const live = wm && wm.canWindow;
+  const label = lang === "en"
+    ? { close: "close", min: "minimise", max: wm && wm.state === "max" ? "restore" : "maximise" }
+    : { close: "닫기", min: "최소화", max: wm && wm.state === "max" ? "이전 크기로" : "최대화" };
   return (
-    <div className="term-title">
-      <span className="term-dot r" /><span className="term-dot y" /><span className="term-dot g" />
+    <div className={"term-title" + (live ? " live" : "")}
+         onPointerDown={live && wm.state === "windowed" ? wm.onDragStart : undefined}
+         onDblClick={live ? wm.onToggleMax : undefined}>
+      {live ? (
+        <div className="term-dots">
+          <button type="button" className="term-dot r" title={label.close} aria-label={label.close}
+                  onPointerDown={e => e.stopPropagation()} onClick={wm.onClose} />
+          <button type="button" className="term-dot y" title={label.min} aria-label={label.min}
+                  onPointerDown={e => e.stopPropagation()} onClick={wm.onMinimise} />
+          <button type="button" className="term-dot g" title={label.max} aria-label={label.max}
+                  onPointerDown={e => e.stopPropagation()} onClick={wm.onToggleMax} />
+        </div>
+      ) : (
+        <div className="term-dots" aria-hidden="true">
+          <span className="term-dot r" /><span className="term-dot y" /><span className="term-dot g" />
+        </div>
+      )}
       <div className="term-title-name">
         {chatOn ? `chat - ${window.SITE_DATA.site.handle}` : `${user}@${window.SITE_DATA.site.handle}: ${path} - bash`}
       </div>
@@ -887,6 +918,182 @@ function WeatherBlock({ location }) {
   );
 }
 
+// curl over same-origin URLs. The request is real, which is why this renders as a
+// component: the shell pipeline is synchronous, so a fetch cannot be piped. `man
+// curl` says so rather than letting it fail quietly.
+function FetchBlock({ url, head }) {
+  const [state, setState] = React.useState({ loading: true });
+  React.useEffect(() => {
+    let cancelled = false;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    const t0 = performance.now();
+    fetch(url, { signal: ctl.signal, cache: "no-store" })
+      .then(async (r) => {
+        const body = head ? "" : await r.text();
+        if (cancelled) return;
+        setState({
+          loading: false, status: r.status, statusText: r.statusText,
+          headers: [...r.headers.entries()], body, ms: Math.round(performance.now() - t0),
+        });
+      })
+      .catch((e) => {
+        if (!cancelled) setState({ loading: false, error: e && e.name === "AbortError" ? "Operation timed out" : String(e) });
+      });
+    return () => { cancelled = true; clearTimeout(timer); ctl.abort(); };
+  }, [url, head]);
+
+  if (state.loading) return <div className="t-line dim">connecting...</div>;
+  if (state.error) return <div className="t-line warn">curl: (28) {state.error}</div>;
+
+  const MAX = 200;
+  const lines = head
+    ? state.headers.map(([k, v]) => k + ": " + v)
+    : String(state.body).split(String.fromCharCode(10));
+  const shown = lines.slice(0, MAX);
+  return (
+    <>
+      {head && <div className="t-line">HTTP/1.1 {state.status} {state.statusText}</div>}
+      {shown.map((l, i) => <div key={i} className="t-line">{l || " "}</div>)}
+      {lines.length > MAX && <div className="t-line dim">(truncated: {lines.length - MAX} more lines)</div>}
+      <div className="t-line dim">
+        {"* " + state.status + " " + state.statusText + " in " + state.ms + "ms"}
+      </div>
+    </>
+  );
+}
+// A QR the phone can actually read. The ASCII form is two characters per module,
+// so the module is square only if the line height equals twice the font advance.
+// That advance is font dependent, so it gets measured rather than guessed: at the
+// default 1.7 line height a module comes out 1:1.42 and simply will not decode.
+function QrBlock({ grid, caption, mode }) {
+  const boxRef = React.useRef(null);
+  const [lineHeight, setLineHeight] = React.useState(null);
+
+  React.useEffect(() => {
+    if (mode === "svg" || !boxRef.current) return;
+    // Measure inside the element that actually holds the code, not its wrapper:
+    // the two can carry different font sizes and then the module is not square.
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:inherit";
+    probe.textContent = "M".repeat(50);
+    boxRef.current.appendChild(probe);
+    const advance = probe.getBoundingClientRect().width / 50;
+    boxRef.current.removeChild(probe);
+    // Whole pixels: a 16.8px row leaves sub-pixel seams on some displays, and a seam
+    // through the code is enough to stop it decoding.
+    if (advance > 0) setLineHeight(Math.max(2, Math.round(advance * 2)));
+  }, [mode, grid]);
+
+  const label = caption && /^https?:\/\//.test(caption)
+    ? <a className="t-link" href={caption} target="_blank" rel="noreferrer">{caption}</a>
+    : caption ? <span className="t-line dim">{caption}</span> : null;
+
+  // The virtual filesystem is read-only, so `qrencode -o` cannot write anything.
+  // A browser download is a different thing, and it is what a QR is usually for:
+  // printing it, or dropping it into a slide.
+  const QUIET = 4;
+  const svgString = (s) => {
+    const n = grid.length, dim = (n + QUIET * 2) * s;
+    let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (!grid[r][c]) continue;
+      d += "M" + ((c + QUIET) * s) + " " + ((r + QUIET) * s) +
+           "h" + s + "v" + s + "h-" + s + "z";
+    }
+    const head = '<svg xmlns="http://www.w3.org/2000/svg" width="' + dim +
+      '" height="' + dim + '" viewBox="0 0 ' + dim + " " + dim +
+      '" shape-rendering="crispEdges">';
+    const body = '<rect width="' + dim + '" height="' + dim +
+      '" fill="#ffffff"/><path d="' + d + '" fill="#000000"/></svg>';
+    return head + body;
+  };
+
+  const save = (blob, name) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const saveSvg = () => save(
+    new Blob([svgString(8)], { type: "image/svg+xml;charset=utf-8" }), "qr.svg");
+  const savePng = () => {
+    const s = 8, n = grid.length, dim = (n + QUIET * 2) * s;
+    const cv = document.createElement("canvas");
+    cv.width = dim; cv.height = dim;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, dim, dim);
+    ctx.fillStyle = "#000000";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (grid[r][c]) ctx.fillRect((c + QUIET) * s, (r + QUIET) * s, s, s);
+    }
+    cv.toBlob((b) => b && save(b, "qr.png"), "image/png");
+  };
+  const saveRow = (
+    <div className="qr-save">
+      <button type="button" className="qr-save-btn" onClick={savePng}>qr.png</button>
+      <button type="button" className="qr-save-btn" onClick={saveSvg}>qr.svg</button>
+    </div>
+  );
+
+  if (mode === "svg") {
+    const n = grid.length, quiet = 4, s = 6;
+    const dim = (n + quiet * 2) * s;
+    let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (!grid[r][c]) continue;
+      d += "M" + ((c + quiet) * s) + " " + ((r + quiet) * s) + "h" + s + "v" + s + "h-" + s + "z";
+    }
+    return (
+      <div className="qr-wrap">
+        <svg className="qr-svg" width={dim} height={dim} viewBox={"0 0 " + dim + " " + dim}
+             role="img" aria-label={caption || "QR code"} shapeRendering="crispEdges">
+          <rect width={dim} height={dim} fill="#ffffff" />
+          <path d={d} fill="#000000" />
+        </svg>
+        {label}
+        {saveRow}
+      </div>
+    );
+  }
+
+  // Quiet zone of 4 modules, as the spec asks. Two was enough for some readers and
+  // silently rejected by others.
+  const rows = window.QR.toAscii(grid, 4);
+  // Each cell is an inline-block with an explicit height. An inline span paints its
+  // background over the font content box, not the line box, so at a line height
+  // larger than the glyphs it leaves horizontal white seams through the code: the
+  // finder patterns still resolve, and the data never decodes.
+  // Width is pinned too, so the module is an exact square instead of "two glyphs
+  // wide by however tall the line happens to be".
+  const rowStyle = lineHeight ? { height: lineHeight + "px", lineHeight: lineHeight + "px" } : null;
+  const cellStyle = lineHeight
+    ? { width: lineHeight + "px", height: lineHeight + "px", lineHeight: lineHeight + "px" }
+    : null;
+  return (
+    <div className="qr-wrap">
+      <div className="qr-ascii" ref={boxRef} role="img" aria-label={caption || "QR code"}>
+        {rows.map((line, i) => (
+          <div key={i} className="qr-row" style={rowStyle}>
+            {(() => {
+              const parts = [];
+              for (let j = 0; j < line.length; j += 2) {
+                const pair = line.slice(j, j + 2);
+                parts.push(
+                  <span key={j} className={pair === "##" ? "t-c-qr1" : "t-c-qr0"} style={cellStyle}>{pair}</span>
+                );
+              }
+              return parts;
+            })()}
+          </div>
+        ))}
+      </div>
+      {label}
+      {saveRow}
+    </div>
+  );
+}
 function NowBlock({ view, lang }) {
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
@@ -903,7 +1110,11 @@ function NowBlock({ view, lang }) {
   const title = view === "month" ? (lang === "en" ? "this month" : "이번 달")
               : view === "week" ? (lang === "en" ? "this week" : "이번 주")
               : (lang === "en" ? "today" : "오늘");
-  const synced = window.CALENDAR.relativeAgo(data.updated, lang);
+  // "live" when the browser read the Calendar API directly, otherwise how old
+  // the committed snapshot is.
+  const synced = data.live
+    ? (lang === "en" ? "live" : "실시간")
+    : window.CALENDAR.relativeAgo(data.updated, lang);
 
   if (!events.length) {
     return (

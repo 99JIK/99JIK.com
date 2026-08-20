@@ -21,7 +21,7 @@
       const rest = [];
       for (let i = 0; i < args.length; i++) {
         const a = args[i];
-        if (a.startsWith("-F")) sep = a.length > 2 ? a.slice(2) : (args[++i] || " ");
+        if (a.startsWith("-F")) sep = a.length > 2 ? a.slice(2) : (args[++i]);
         else rest.push(a);
       }
       const prog = rest.join(" ").replace(/^['"]|['"]$/g, "").trim();
@@ -57,7 +57,7 @@
         const fields = split(line);
         const nr = i + 1;
         if (!matches(line, fields, nr)) return;
-        if (!argList) return out.push(T(String(line) || " "));
+        if (!argList) return out.push(T(String(line)));
         const pieces = argList.split(",").map(tok => {
           const t = tok.trim();
           if (t === "$0") return String(line);
@@ -70,7 +70,7 @@
           }
           return t.replace(/^["']|["']$/g, "");
         });
-        out.push(T(pieces.join(" ") || " "));
+        out.push(T(pieces.join(" ")));
       });
       return out.length ? out : [T("(no output)", { dim: true })];
     },
@@ -201,18 +201,22 @@
   // ── neofetch ──────────────────────────────────────────────────────────────
   // Every value here is read from something: /etc/os-release, the filesystem tree,
   // the stored theme, the real heap. Nothing is decorative text.
+  // Pure ASCII on purpose. Box-drawing characters (U+2500-257F) are East Asian
+  // "Ambiguous" width: a CJK fallback font renders them two cells wide, and this art
+  // sits in a padded column next to the info block, so one wide glyph shears the
+  // whole layout. ASCII cannot do that.
   const NEOFETCH_LOGO = [
-    "   ┌──────────────────┐",
-    "   │                  │",
-    "   │   99jik          │",
-    "   │                  │",
-    "   │   $ _            │",
-    "   │                  │",
-    "   │                  │",
-    "   └──────────────────┘",
-    "        ┌────────┐     ",
-    "   ┌────┴────────┴────┐",
-    "   └──────────────────┘",
+    "    .------------------.",
+    "    |                  |",
+    "    |   99jik          |",
+    "    |                  |",
+    "    |   $ _            |",
+    "    |                  |",
+    "    |                  |",
+    "    '------------------'",
+    "        .----------.    ",
+    "    .---'----------'---.",
+    "    '------------------'",
   ];
 
   C.neofetch = {
@@ -312,6 +316,204 @@
   };
   C.vim = { hidden: true, usage: "vim <file>", hint: C.vi.hint, run: C.vi.run };
   C.view = { hidden: true, usage: "view <file>", hint: C.vi.hint, run: C.vi.run };
+
+  // ── sed ───────────────────────────────────────────────────────────────────
+  // The two forms people actually type: `s/re/rep/[gi]` and a delete address.
+  // Anything else says so instead of pretending.
+  C.sed = {
+    usage: "sed 's/re/rep/[gi]' | sed '/re/d' | sed 'Nd'",
+    hint: { ko: "치환 / 삭제 (sed 's/a/b/g')", en: "substitute or delete (sed 's/a/b/g')" },
+    run: (args, stdin) => {
+      const script = args.join(" ").replace(/^['"]|['"]$/g, "").trim();
+      if (!script) return [err("sed: no script")];
+      if (!stdin) return [err("sed: reads from standard input; use it after a pipe")];
+
+      const sub = script.match(/^s(.)(.*?)\1(.*?)\1([gi]*)$/);
+      if (sub) {
+        const [, , pat, rep, mods] = sub;
+        let re;
+        try { re = new RegExp(pat, mods.includes("g") ? "g" + (mods.includes("i") ? "i" : "") : (mods.includes("i") ? "i" : "")); }
+        catch { return [err("sed: -e expression #1, char 1: invalid regex")]; }
+        return stdin.map(l => T(String(l).replace(re, rep)));
+      }
+      const delRe = script.match(/^\/(.*)\/d$/);
+      if (delRe) {
+        let re;
+        try { re = new RegExp(delRe[1]); } catch { return [err("sed: invalid regex")]; }
+        const out = stdin.filter(l => !re.test(String(l))).map(l => T(l));
+        return out.length ? out : [T("(no output)", { dim: true })];
+      }
+      const delN = script.match(/^(\d+)d$/);
+      if (delN) {
+        const n = +delN[1];
+        return stdin.filter((_, i) => i + 1 !== n).map(l => T(l));
+      }
+      return [err(`sed: -e expression #1: unknown command: \`${script}'`)];
+    },
+  };
+
+  // ── lolcat ────────────────────────────────────────────────────────────────
+  // The genuine article: a filter that rainbows whatever comes through stdin.
+  C.lolcat = {
+    usage: "lolcat [file...]",
+    hint: { ko: "출력을 무지개로", en: "rainbow the output" },
+    run: (args, stdin) => {
+      let lines = stdin;
+      if (!lines) {
+        const { node } = FS().resolve(args[0] || "");
+        if (!node || node.type === "dir") return [err("lolcat: reads a file or standard input")];
+        lines = node.content || [];
+      }
+      return lines.map((l, row) => {
+        const parts = [...String(l)].map((ch, col) => ({
+          t: ch,
+          c: "rb" + ((row * 2 + col) % 6),
+        }));
+        return { kind: "text", text: String(l) || " ", parts: parts.length ? parts : [{ t: " " }] };
+      });
+    },
+  };
+
+  // ── shell-adjacent ────────────────────────────────────────────────────────
+  C.less = {
+    usage: "less <file>",
+    hint: { ko: "파일 보기 (스크롤백이 곧 페이저)", en: "view a file (the scrollback is the pager)" },
+    // less(1) on a non-tty just cats, which is exactly the honest behaviour here:
+    // the scrollback already scrolls, so there is nothing left to page.
+    run: (args, stdin, lang) => window.FS.cat(args),
+  };
+  C.more = { hidden: true, usage: "more <file>", hint: C.less.hint, run: C.less.run };
+
+  C.alias = {
+    usage: "alias",
+    hint: { ko: "정의된 별칭", en: "list command aliases" },
+    run: (args, stdin, lang) => {
+      // Derived, not hand-listed: two names sharing a run function are aliases.
+      const table = window.TERMINAL ? window.TERMINAL.buildCommands(lang || "ko") : {};
+      const seen = new Map();
+      const out = [];
+      for (const [name, def] of Object.entries(table)) {
+        if (!def.run) continue;
+        if (seen.has(def.run)) out.push(T(`alias ${name}='${seen.get(def.run)}'`));
+        else seen.set(def.run, name);
+      }
+      return out.length ? out : [T("(no aliases)", { dim: true })];
+    },
+  };
+
+  C.time = {
+    usage: "time <command>",
+    hint: { ko: "명령 실행 시간 측정", en: "time a command" },
+    run: (args, stdin, lang) => {
+      if (!args.length) return [err("time: usage: time <command>")];
+      const line = args.join(" ");
+      const t0 = performance.now();
+      const out = window.TERMINAL.run(line, lang) || [];
+      const ms = performance.now() - t0;
+      const fmt = (v) => "0m" + (v / 1000).toFixed(3) + "s";
+      return [
+        ...out.filter(b => b.kind !== "mode"),
+        T(""),
+        T("real\t" + fmt(ms), { dim: true }),
+        T("user\t" + fmt(ms), { dim: true }),
+        T("sys\t" + fmt(0), { dim: true }),
+      ];
+    },
+  };
+
+  C["lsb_release"] = {
+    hidden: true, usage: "lsb_release [-a]",
+    hint: { ko: "배포판 정보", en: "distribution information" },
+    run: () => {
+      const rel = FS().resolve("/etc/os-release").node;
+      const get = (k) => {
+        const hit = ((rel && rel.content) || []).find(l => l.startsWith(k + "="));
+        return hit ? hit.slice(k.length + 1).replace(/^"|"$/g, "") : "";
+      };
+      return [
+        T("Distributor ID:\t" + (get("NAME") || "JIKOS")),
+        T("Description:\t" + (get("PRETTY_NAME") || "JIKOS")),
+        T("Release:\t" + (get("VERSION_ID") || "1.0")),
+        T("Codename:\t" + (get("ID") || "jikos")),
+      ];
+    },
+  };
+
+  C.who = {
+    hidden: true, usage: "who", hint: { ko: "로그인한 사용자", en: "who is logged in" },
+    run: () => {
+      const u = window.getPromptName ? window.getPromptName() : "anonymous";
+      const since = new Date(Date.now() - performance.now());
+      const stamp = since.toLocaleString("en-GB", {
+        timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).replace(",", "");
+      return [T(u.padEnd(10) + "tty1         " + stamp)];
+    },
+  };
+  C.w = { hidden: true, usage: "w", hint: C.who.hint, run: C.who.run };
+
+  // ── qrencode ──────────────────────────────────────────────────────────────
+  // Real qrencode has -t ASCII and -t SVG. ASCII is the default because this is a
+  // terminal; the renderer measures the font advance and sets the line height so a
+  // module comes out square, which is what a scanner needs. -t SVG is there for when
+  // the surrounding font cannot be measured.
+  function qrBlocks(text, mode) {
+    const grid = window.QR.encode(text);
+    if (!grid) return [err("qrencode: input too long (136 bytes at this error correction level)")];
+    return [{ kind: "qr", grid, caption: text, mode: mode === "svg" ? "svg" : "ascii" }];
+  }
+
+  function qrMode(args) {
+    // Token comparison rather than a regex: every editing pass that touched a
+    // backslash in this file so far has silently eaten it.
+    const wantsSvg = (args || []).some(a => String(a).toLowerCase() === "svg");
+    if (wantsSvg) return "svg";
+    return "ascii";
+  }
+
+  C.qrencode = {
+    usage: "qrencode [-t ASCII|SVG] [text|url]",
+    hint: { ko: "QR 코드 (기본값은 이 사이트 주소)", en: "QR code (defaults to this site)" },
+    run: (args, stdin) => {
+      const words = [];
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === "-t") { i++; continue; }
+        if (args[i].startsWith("-")) continue;
+        if (/^ascii$|^svg$/i.test(args[i])) continue;
+        words.push(args[i]);
+      }
+      // Reads stdin like the real thing, so `book | qrencode` and `cv | qrencode`
+      // turn any link the site prints into something a phone can scan.
+      const piped = (stdin || []).map(String).filter(l => l.trim());
+      const url = piped.find(l => /^(https?:\/\/|mailto:)/.test(l.trim()));
+      const text = words.join(" ")
+        || (url ? url.trim() : piped.length ? piped.join(" ").trim() : "")
+        || ("https://" + window.SITE_DATA.site.domain);
+      return qrBlocks(text, qrMode(args));
+    },
+  };
+
+  C.vcard = {
+    usage: "vcard [-t ASCII|SVG]",
+    hint: { ko: "연락처 QR (스캔해서 저장)", en: "contact QR you can scan into a phone" },
+    run: (args) => {
+      const p = window.SITE_DATA.profile;
+      const NL = String.fromCharCode(10);
+      // Built from data.js so the card cannot drift from the rest of the site.
+      const card = [
+        "BEGIN:VCARD", "VERSION:3.0",
+        "N:" + p.name_en.split(" ").reverse().join(";"),
+        "FN:" + p.name_en,
+        "EMAIL:" + p.email,
+        "URL:https://" + window.SITE_DATA.site.domain,
+        "END:VCARD",
+      ].join(NL);
+      const out = qrBlocks(card, qrMode(args));
+      if (out[0] && out[0].kind === "qr") out[0].caption = p.name_en + " · " + p.email;
+      return out;
+    },
+  };
 
   window.TOOLS = C;
 })();

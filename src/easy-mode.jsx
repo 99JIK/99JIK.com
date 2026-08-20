@@ -60,6 +60,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     skills: "Skills",
     role: "Role", location: "Location", email: "Email", github: "GitHub", linkedin: "LinkedIn", til: "TIL", cv: "CV",
     cvKo: "Korean ↗", cvEn: "English ↗",
+    booking: "Booking", bookAction: "book a time ↗",
     chatAction: "chat live",
     chatTitle: "chat with jeongin",
     chatLive: "online",
@@ -81,6 +82,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     skills: "스킬",
     role: "역할", location: "위치", email: "이메일", github: "깃허브", linkedin: "링크드인", til: "TIL", cv: "이력서",
     cvKo: "한국어 ↗", cvEn: "영문 ↗",
+    booking: "예약", bookAction: "시간 예약하기 ↗",
     chatAction: "실시간 채팅",
     chatTitle: `${p.name_ko}과 채팅`,
     chatLive: "online",
@@ -132,6 +134,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
           <PropRow label={T.github}   value={<a href={`https://github.com/${p.github}`} target="_blank" rel="noreferrer">@{p.github}</a>} />
           <PropRow label={T.linkedin} value={<a href={`https://linkedin.com/in/${p.linkedin}`} target="_blank" rel="noreferrer">jeongin-kim</a>} />
           <PropRow label={T.til}      value={<a href={p.til} target="_blank" rel="noreferrer">{d.site.til} ↗</a>} />
+          <PropRow label={T.booking}  value={<a href={d.site.bookingUrl} target="_blank" rel="noreferrer">{T.bookAction}</a>} />
           <PropRow label={T.cv}       value={<>
             <a href={d.site.cvKo} target="_blank" rel="noreferrer">{T.cvKo}</a>
             <span className="easy-dim"> · </span>

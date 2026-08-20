@@ -94,6 +94,7 @@ function fallbackHtml() {
       `<a href="https://github.com/${esc(p.github)}">github.com/${esc(p.github)}</a>`,
       `<a href="https://linkedin.com/in/${esc(p.linkedin)}">linkedin</a>`,
       `<a href="${esc(D.site.tilUrl)}">${esc(D.site.til)}</a>`,
+      `<a href="${esc(D.site.bookingUrl)}">시간 예약 / Book a time</a>`,
       `<a href="${esc(D.site.cvKo)}">CV (한국어)</a>`,
       `<a href="${esc(D.site.cvEn)}">CV (English)</a>`,
     ]),

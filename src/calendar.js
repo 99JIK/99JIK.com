@@ -26,8 +26,65 @@
 
   let CACHE = null;
 
+  // Same rules the sync script uses, so live and snapshot data get tagged alike.
+  function tagFor(title) {
+    const t = String(title || "").toLowerCase();
+    if (/lab|seminar|advisor|meeting|미팅|세미나/.test(t)) return "lab";
+    if (/focus|writing|deep work|집중|작성/.test(t)) return "focus";
+    if (/mentor|teach|ta|tutor|멘토|조교/.test(t)) return "teach";
+    if (/gym|dinner|lunch|birthday|운동|저녁|점심|생일/.test(t)) return "life";
+    return "other";
+  }
+
+  const isPrivate = (title) =>
+    String(title).includes("[private]") || String(title).includes("[비공개]");
+
+  // Google's iCal endpoint sends no CORS headers, but the Calendar API does. Given a
+  // browser key the page reads the calendar directly and nothing needs syncing.
+  async function fromApi(id, key) {
+    const now = new Date();
+    const min = new Date(now); min.setFullYear(now.getFullYear() - 1);
+    const max = new Date(now); max.setFullYear(now.getFullYear() + 1);
+    const u = new URL("https://www.googleapis.com/calendar/v3/calendars/" +
+                      encodeURIComponent(id) + "/events");
+    u.searchParams.set("key", key);
+    u.searchParams.set("singleEvents", "true");
+    u.searchParams.set("orderBy", "startTime");
+    u.searchParams.set("maxResults", "250");
+    u.searchParams.set("timeMin", min.toISOString());
+    u.searchParams.set("timeMax", max.toISOString());
+
+    const r = await fetch(u.toString(), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const events = (j.items || [])
+      .filter(e => e.summary && e.start)
+      .filter(e => !isPrivate(e.summary))
+      .map(e => ({
+        // All-day events carry `date`; timed ones carry `dateTime`.
+        start: e.start.dateTime || (e.start.date + "T00:00:00+09:00"),
+        end: (e.end && (e.end.dateTime || (e.end.date && e.end.date + "T00:00:00+09:00")))
+             || e.start.dateTime || (e.start.date + "T23:59:59+09:00"),
+        title: String(e.summary).replace(/\s*\[(work|personal)\]\s*/gi, "").trim(),
+        location: e.location || "",
+        tag: tagFor(e.summary),
+      }));
+    return {
+      updated: new Date().toISOString(),
+      source: "google-calendar-api", live: true,
+      count: events.length, events,
+    };
+  }
+
   async function load() {
     if (CACHE) return CACHE;
+    const site = window.SITE_DATA.site;
+    // Live first when a key is configured. The committed snapshot stays as the
+    // fallback so a bad key or a quota problem degrades instead of emptying it.
+    if (site.gcalApiKey && site.calendarId) {
+      try { CACHE = await fromApi(site.calendarId, site.gcalApiKey); return CACHE; }
+      catch (e) { /* fall through to the snapshot */ }
+    }
     try {
       const r = await fetch("calendar.json", { cache: "no-store" });
       if (!r.ok) throw new Error("no file");

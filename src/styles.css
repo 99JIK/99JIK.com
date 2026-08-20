@@ -57,7 +57,7 @@ body {
 
 /* ===== Terminal shell — viewport-locked ===== */
 .term-shell {
-  height: 100dvh; display: grid; grid-template-rows: 36px minmax(0,1fr);
+  height: 100%; display: grid; grid-template-rows: 36px minmax(0,1fr);
   background: var(--t-bg); color: var(--t-fg); cursor: text;
   font-family: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-ligatures: none;
@@ -83,11 +83,13 @@ body {
 }
 .term-easy:hover { background: var(--t-chipHover); border-color: var(--t-accent); color: var(--t-accent); }
 
-/* One scroll region for everything, prompt included. */
+/* One scroll region for everything, prompt included. Output does not wrap: fixed
+   width art and aligned tables have to scroll sideways or they shear, which is
+   exactly what a terminal does. */
 .term-body {
-  overflow-y: auto; padding: 22px 28px 18px;
+  overflow: auto; padding: 22px 28px 18px;
   font-size: 14px; line-height: 1.7;
-  display: flex; flex-direction: column;
+  overscroll-behavior: contain;
 }
 /* Content starts at the top and grows down, like a real login session. The old
    `margin-top: auto` was for the era when the prompt was a pinned bottom bar; with
@@ -191,6 +193,8 @@ body {
 /* The prompt sits inline in the scrollback, so it is a text line, not a row. */
 .t-prompt-line {
   position: relative;
+  /* The one thing that still wraps: a long command you are typing must stay on
+     screen, whereas output is allowed to run off to the right. */
   white-space: pre-wrap; overflow-wrap: break-word;
   color: var(--t-fg);
 }
@@ -220,7 +224,7 @@ body {
 /* ===== Output blocks ===== */
 /* Command output gets breathing room around it. Flat-packed lines read as a wall. */
 .t-out { margin: 3px 0 12px; }
-.t-line { color: var(--t-fg); white-space: pre-wrap; overflow-wrap: break-word; font-variant-ligatures: none; }
+.t-line { color: var(--t-fg); white-space: pre; font-variant-ligatures: none; }
 .t-line.dim { color: var(--t-muted); }
 .t-line.warn { color: var(--t-red); }
 .t-line.strong { font-weight: 600; color: var(--t-accent); }
@@ -232,6 +236,32 @@ body {
 .t-c-num  { color: var(--t-muted); }
 .t-c-meta { color: var(--t-muted); }
 .t-c-faint { color: var(--t-muted); opacity: 0.75; }
+
+/* lolcat, which is a real filter and therefore really colours things */
+.t-c-rb0 { color: #ff5f57; } .t-c-rb1 { color: #febc2e; } .t-c-rb2 { color: #28c840; }
+.t-c-rb3 { color: #5ac8fa; } .t-c-rb4 { color: #7d7aff; } .t-c-rb5 { color: #ff6ac1; }
+
+/* QR output. The SVG carries its own white field so it stays readable on any
+   theme; the ASCII form (-t ASCII) uses the two classes below. */
+.qr-wrap { margin: 6px 0 10px; }
+.qr-svg { display: block; }
+.qr-save { display: flex; gap: 6px; margin-top: 6px; }
+.qr-save-btn {
+  background: transparent; border: 1px solid var(--t-border); color: var(--t-muted);
+  font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+}
+.qr-save-btn:hover { border-color: var(--t-accent); color: var(--t-accent); }
+/* line-height is set inline from the measured advance so modules come out square */
+/* no font-size override: the measured advance has to match the rendered glyphs */
+.qr-ascii { display: inline-block; background: #fff; padding: 0; }
+.qr-row { white-space: pre; display: block; }
+/* inline-block so the background fills the whole cell, not just the glyph box */
+.qr-row > span { display: inline-block; vertical-align: top; overflow: hidden; }
+
+/* QR modules for -t ASCII. Dark on light in every theme, because scanners expect
+   that, though the monospace cell is not square so this form may not scan. */
+.t-c-qr1 { background: #000; color: #000; }
+.t-c-qr0 { background: #fff; color: #fff; }
 
 /* neofetch logo, cal marks */
 .t-c-logo  { color: var(--t-accent); }
@@ -718,4 +748,100 @@ body {
 
 @media (max-width: 720px) {
   .vi { padding: 8px 14px 6px; font-size: 13px; }
+}
+
+/* ===== Desktop ===== */
+/* JIKOS has no shipped wallpaper because JIKOS is not a real distribution. It is
+   drawn from the active theme instead, so all four themes get their own desktop
+   and the whole thing costs no bytes. */
+.desktop { position: fixed; inset: 0; overflow: hidden; background: var(--t-bg); }
+
+.wall { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.wall::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% -10%,
+      color-mix(in oklab, var(--t-accent) 16%, var(--t-bg)) 0%, var(--t-bg) 62%);
+}
+.wall-grid {
+  position: absolute; inset: 0; opacity: 0.5;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--t-fg) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--t-fg) 7%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(90% 70% at 50% 30%, #000 30%, transparent 100%);
+}
+.wall-mark {
+  position: absolute; right: 6vw; bottom: 4vh;
+  font-size: min(52vh, 40vw); line-height: 1;
+  color: color-mix(in oklab, var(--t-accent) 12%, transparent);
+}
+.wall-clock {
+  position: absolute; left: 6vw; bottom: 12vh;
+  font-family: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, monospace;
+  color: var(--t-fg);
+}
+.wall-time { font-size: clamp(48px, 9vw, 108px); line-height: 1; font-weight: 300; letter-spacing: -2px; }
+.wall-date { margin-top: 6px; font-size: 15px; color: var(--t-muted); letter-spacing: 2px; text-transform: uppercase; }
+.wall-next { margin-top: 14px; font-size: 13px; color: var(--t-cyan); }
+.wall-brand {
+  position: absolute; right: 18px; bottom: 12px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px; color: var(--t-muted); letter-spacing: 2px;
+}
+
+.desk-icons { position: absolute; top: 22px; left: 22px; display: grid; gap: 6px; }
+.desk-icon {
+  display: grid; justify-items: center; gap: 5px; width: 78px; padding: 8px 4px;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--t-fg); font: inherit; font-size: 11px; cursor: pointer;
+}
+.desk-icon:hover { background: color-mix(in oklab, var(--t-fg) 8%, transparent); }
+.desk-icon:focus-visible { border-color: var(--t-accent); }
+.desk-icon-glyph {
+  display: grid; place-items: center; width: 42px; height: 42px; border-radius: 8px;
+  background: var(--t-panel); border: 1px solid var(--t-border);
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; color: var(--t-accent);
+}
+.desk-icon-label { text-shadow: 0 1px 3px var(--t-bg); }
+
+.desk-note {
+  position: absolute; left: 50%; top: 32px; transform: translateX(-50%);
+  max-width: min(88vw, 520px); padding: 10px 16px;
+  background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 6px;
+  color: var(--t-fg); font-size: 13px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+
+/* ===== Window ===== */
+.win { position: absolute; overflow: hidden; }
+.win.maxed { inset: 0; }
+.win.framed {
+  border: 1px solid var(--t-border); border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.3);
+}
+.win-resize {
+  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--t-border) 50%);
+}
+.term-title.live { cursor: default; }
+.win.framed .term-title.live { cursor: move; }
+
+.term-dots { display: flex; gap: 8px; align-items: center; }
+button.term-dot { border: none; padding: 0; cursor: pointer; }
+button.term-dot:hover { filter: brightness(1.25); }
+
+.dock {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; gap: 8px; padding: 6px;
+  background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 10px;
+}
+.dock-item {
+  background: transparent; border: 1px solid var(--t-border); border-radius: 6px;
+  color: var(--t-fg); font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer;
+}
+.dock-item:hover { border-color: var(--t-accent); color: var(--t-accent); }
+
+@media (max-width: 860px) {
+  .desk-icons, .wall-clock, .wall-mark { display: none; }
 }

@@ -11,6 +11,7 @@ import "./prefs.js";
 import "./fs.js";
 import "./coreutils.js";
 import "./calendar.js";
+import "./qr.js";
 import "./tools.js";
 import "./extras.js";
 import "./crisp.js";
@@ -19,6 +20,7 @@ import "./terminal-commands.js";
 
 import { TerminalView } from "./terminal-view.jsx";
 import { EasyMode } from "./easy-mode.jsx";
+import { Desktop } from "./desktop.jsx";
 
 const BOOT_LINES = [
   "[    0.000000] Linux version 6.10.0-jik (jeongin@99jik) #1 SMP",
@@ -194,7 +196,9 @@ function App() {
     <>
       {!bootDone && <BootSequence onDone={onBootDone} />}
       {mode === "terminal"
-        ? <TerminalView onModeChange={setMode} onTheme={(t) => setTw({ theme: t })} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
+        ? <Desktop lang={tweaks.lang}>
+            <TerminalView onModeChange={setMode} onTheme={(t) => setTw({ theme: t })} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
+          </Desktop>
         : <EasyMode onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
       }
       {showTweaks && <Tweaks state={tweaks} set={setTw} onClose={() => setShowTweaks(false)} />}

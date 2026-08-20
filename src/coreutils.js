@@ -22,6 +22,9 @@
   const padEnd = (str, n) => String(str) + " ".repeat(Math.max(0, n - cells(str)));
   window.TEXT = { cells, padEnd };
 
+  // Empty strings stay empty here. Turning "" into " " to give the div height would
+  // corrupt the data the moment it flows through a pipe; the renderer substitutes a
+  // space at display time instead.
   const T = (text, opts = {}) => ({ kind: "text", text, ...opts });
   const err = (text) => T(text, { warn: true });
   const FS = () => window.FS;
@@ -33,8 +36,8 @@
     const rest = [];
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
-      if (a === "-n" && args[i + 1] !== undefined && /^\d+$/.test(args[i + 1])) {
-        opts.n = parseInt(args[++i], 10);
+      if ((a === "-n" || a === "-c") && args[i + 1] !== undefined && /^\d+$/.test(args[i + 1])) {
+        opts[a.slice(1)] = parseInt(args[++i], 10);
       } else if (/^-\d+$/.test(a)) {
         opts.n = parseInt(a.slice(1), 10);          // `head -5`
       } else if (a.startsWith("-") && a.length > 1) {
@@ -103,37 +106,42 @@
 
   // ── text tools ────────────────────────────────────────────────────────────
   C.head = {
-    usage: "head [-n N] [file...]",
+    usage: "head [-n N] [-c N] [file...]",
     hint: { ko: "앞부분 N줄 (기본 10)", en: "first N lines (default 10)" },
     run: (args, stdin) => {
       const { opts, rest } = parseArgs(args);
       const n = opts.n === undefined ? 10 : opts.n;
+      if (opts.c !== undefined) return emit(inputs(rest, stdin, "head"),
+        (src, out) => out.push(T(src.lines.join("\n").slice(0, opts.c))));
       return emit(inputs(rest, stdin, "head"),
-        (src, out) => src.lines.slice(0, n).forEach(l => out.push(T(l || " "))));
+        (src, out) => src.lines.slice(0, n).forEach(l => out.push(T(l))));
     },
   };
 
   C.tail = {
-    usage: "tail [-n N] [file...]",
+    usage: "tail [-n N] [-c N] [file...]",
     hint: { ko: "뒷부분 N줄 (기본 10)", en: "last N lines (default 10)" },
     run: (args, stdin) => {
       const { opts, rest } = parseArgs(args);
       const n = opts.n === undefined ? 10 : opts.n;
+      if (opts.c !== undefined) return emit(inputs(rest, stdin, "tail"),
+        (src, out) => out.push(T(src.lines.join("\n").slice(-opts.c))));
       return emit(inputs(rest, stdin, "tail"),
-        (src, out) => src.lines.slice(-n).forEach(l => out.push(T(l || " "))));
+        (src, out) => src.lines.slice(-n).forEach(l => out.push(T(l))));
     },
   };
 
   C.wc = {
-    usage: "wc [-l|-w|-c] [file...]",
+    usage: "wc [-l|-w|-c|-m] [file...]",
     hint: { ko: "줄/단어/바이트 세기", en: "count lines, words, bytes" },
     run: (args, stdin) => {
       const { flags, rest } = parseArgs(args);
-      const only = flags.has("l") ? "l" : flags.has("w") ? "w" : flags.has("c") ? "c" : null;
+      const only = flags.has("l") ? "l" : flags.has("w") ? "w"
+                 : flags.has("c") ? "c" : flags.has("m") ? "m" : null;
       const res = inputs(rest, stdin, "wc");
       if (res.usage) return [err(res.usage)];
       const out = res.errors.map(err);
-      const totals = { l: 0, w: 0, c: 0 };
+      const totals = { l: 0, w: 0, c: 0, m: 0 };
       for (const s of res.sources) {
         const l = s.lines.length;
         const w = s.lines.reduce((a, x) => {
@@ -141,8 +149,10 @@
           return a + (t ? t.split(/\s+/).length : 0);
         }, 0);
         const c = s.lines.reduce((a, x) => a + String(x).length + 1, 0);
-        totals.l += l; totals.w += w; totals.c += c;
-        const nums = only ? [{ l, w, c }[only]] : [l, w, c];
+        // -m counts characters, which differs from bytes the moment Hangul appears.
+        const m = s.lines.reduce((a, x) => a + [...String(x)].length + 1, 0);
+        totals.l += l; totals.w += w; totals.c += c; totals.m += m;
+        const nums = only ? [{ l, w, c, m }[only]] : [l, w, c];
         out.push(T(nums.map(v => String(v).padStart(7)).join("") + (s.label ? " " + s.label : "")));
       }
       if (res.sources.length > 1) {
@@ -165,22 +175,31 @@
   };
 
   C.sort = {
-    usage: "sort [-r] [-u] [file...]",
-    hint: { ko: "줄 정렬 (-r 역순, -u 중복 제거)", en: "sort lines (-r reverse, -u unique)" },
+    usage: "sort [-n] [-r] [-u] [file...]",
+    hint: { ko: "줄 정렬 (-n 숫자, -r 역순, -u 중복 제거)", en: "sort lines (-n numeric, -r reverse, -u unique)" },
     run: (args, stdin) => {
       const { flags, rest } = parseArgs(args);
       const res = inputs(rest, stdin, "sort");
       if (res.usage) return [err(res.usage)];
-      let lines = res.sources.flatMap(s => s.lines).map(String).sort((a, b) => a.localeCompare(b));
+      // -n compares by leading number, which is what makes `du | sort -n` useful.
+      const num = (v) => { const m = String(v).trim().match(/^-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
+      let lines = res.sources.flatMap(s => s.lines).map(String).sort((a, b) => {
+        if (!flags.has("n")) return a.localeCompare(b);
+        const x = num(a), y = num(b);
+        if (Number.isNaN(x) && Number.isNaN(y)) return a.localeCompare(b);
+        if (Number.isNaN(x)) return -1;
+        if (Number.isNaN(y)) return 1;
+        return x - y;
+      });
       if (flags.has("u")) lines = [...new Set(lines)];
       if (flags.has("r")) lines.reverse();
-      return res.errors.map(err).concat(lines.map(l => T(l || " ")));
+      return res.errors.map(err).concat(lines.map(l => T(l)));
     },
   };
 
   C.uniq = {
-    usage: "uniq [-c] [file...]",
-    hint: { ko: "인접 중복 줄 제거 (-c 개수)", en: "drop adjacent duplicates (-c to count)" },
+    usage: "uniq [-c] [-d] [-u] [file...]",
+    hint: { ko: "인접 중복 처리 (-c 개수, -d 중복만, -u 유일만)", en: "adjacent duplicates (-c count, -d only dups, -u only uniques)" },
     run: (args, stdin) => {
       const { flags, rest } = parseArgs(args);
       const res = inputs(rest, stdin, "uniq");
@@ -189,7 +208,9 @@
       let prev = null, count = 0;
       const flush = () => {
         if (prev === null) return;
-        out.push(T(flags.has("c") ? String(count).padStart(7) + " " + prev : (prev || " ")));
+        if (flags.has("d") && count < 2) return;
+        if (flags.has("u") && count > 1) return;
+        out.push(T(flags.has("c") ? String(count).padStart(7) + " " + prev : (prev)));
       };
       for (const l of res.sources.flatMap(s => s.lines).map(String)) {
         if (l === prev) { count++; continue; }
@@ -201,6 +222,10 @@
   };
 
   // ── environment ───────────────────────────────────────────────────────────
+  // export writes here and echo/env read it back, so the environment is a real
+  // (if short-lived) thing rather than a fixed printout.
+  const userEnv = {};
+
   function envMap() {
     return {
       USER: window.getPromptName ? window.getPromptName() : "anonymous",
@@ -211,6 +236,7 @@
       LANG: (document.documentElement.lang === "en" ? "en_US" : "ko_KR") + ".UTF-8",
       HOSTNAME: window.SITE_DATA.site.handle,
       PATH: "/usr/local/bin:/usr/bin:/bin",
+      ...userEnv,
     };
   }
 
@@ -227,7 +253,7 @@
     run: (args) => {
       const env = envMap();
       const text = args.map(a => a.replace(/\$(\w+)/g, (m, k) => (k in env ? env[k] : m))).join(" ");
-      return [T(text || " ")];
+      return [T(text)];
     },
   };
 
@@ -448,16 +474,29 @@
     ],
   };
   C.curl = {
-    hidden: true, usage: "curl <url>", hint: { ko: "HTTP 요청 (CORS 차단)", en: "HTTP request (blocked by CORS)" },
+    usage: "curl [-I] <url|path>",
+    hint: { ko: "HTTP 요청 (같은 출처는 실제로 감)", en: "HTTP request (same origin actually works)" },
     run: (args) => {
-      const host = String(args[0] || "").replace(/^https?:\/\//, "").split("/")[0] || "host";
-      return [
-        err("curl: (6) Could not resolve host: " + host),
-        T("(cross-origin requests from this page are blocked by CORS)", { dim: true }),
-      ];
+      const rest = (args || []).filter(a => !a.startsWith("-"));
+      const head = (args || []).some(a => /^-[a-zA-Z]*I/.test(a));
+      const target = rest[0];
+      if (!target) return [err("curl: try 'curl <url>'")];
+      let url;
+      try { url = new URL(target, location.href); }
+      catch { return [err("curl: (3) URL using bad/illegal format or missing URL")]; }
+      // Same origin is genuinely reachable, so go and fetch it. Everything else is
+      // blocked by CORS, and saying which is more useful than refusing everything.
+      if (url.origin !== location.origin) {
+        return [
+          err("curl: (6) Could not resolve host: " + url.hostname),
+          T("(cross-origin is blocked by CORS; same-origin paths work, e.g. `curl /calendar.json`)", { dim: true }),
+        ];
+      }
+      return [{ kind: "fetch", url: url.href, head }];
     },
   };
-  C.wget = { hidden: true, usage: "wget <url>", hint: C.curl.hint, run: C.curl.run };
+
+  C.wget = { hidden: true, usage: "wget <url|path>", hint: C.curl.hint, run: C.curl.run };
   C.ifconfig = {
     hidden: true, usage: "ifconfig", hint: { ko: "네트워크 인터페이스", en: "network interfaces" },
     run: () => [
@@ -478,11 +517,24 @@
 
   // ── time and identity ─────────────────────────────────────────────────────
   C.date = {
-    usage: "date",
-    hint: { ko: "현재 시각", en: "current time" },
-    run: () => {
+    usage: "date [+FORMAT]",
+    hint: { ko: "현재 시각 (date +%Y-%m-%d)", en: "current time (date +%Y-%m-%d)" },
+    run: (args) => {
       const d = new Date();
-      return [T(d.toString()), T("unix: " + Math.floor(d.getTime() / 1000), { dim: true })];
+      const spec = (args || []).find(a => a.startsWith("+"));
+      if (!spec) return [T(d.toString()), T("unix: " + Math.floor(d.getTime() / 1000), { dim: true })];
+      const p2 = (v) => String(v).padStart(2, "0");
+      const map = {
+        Y: d.getFullYear(), m: p2(d.getMonth() + 1), d: p2(d.getDate()),
+        H: p2(d.getHours()), M: p2(d.getMinutes()), S: p2(d.getSeconds()),
+        s: Math.floor(d.getTime() / 1000),
+        F: d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()),
+        T: p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds()),
+        A: d.toLocaleDateString("en-GB", { weekday: "long" }),
+        B: d.toLocaleDateString("en-GB", { month: "long" }),
+        Z: "KST", "%": "%",
+      };
+      return [T(spec.slice(1).replace(/%(.)/g, (m, k) => (k in map ? String(map[k]) : m)))];
     },
   };
 
@@ -616,11 +668,11 @@
       const pick = ranges(fields || chars);
       return emit(inputs(rest, stdin, "cut"), (src, out) => src.lines.forEach(l => {
         const s = String(l);
-        if (chars) return out.push(T(pick.map(i => s[i - 1] || "").join("") || " "));
+        if (chars) return out.push(T(pick.map(i => s[i - 1] || "").join("")));
         // cut passes lines without the delimiter through untouched, same as GNU cut
-        if (!s.includes(delim)) return out.push(T(s || " "));
+        if (!s.includes(delim)) return out.push(T(s));
         const parts = s.split(delim);
-        out.push(T(pick.map(i => parts[i - 1]).filter(v => v !== undefined).join(delim) || " "));
+        out.push(T(pick.map(i => parts[i - 1]).filter(v => v !== undefined).join(delim)));
       }));
     },
   };
@@ -649,7 +701,7 @@
       // Short SET2 repeats its last character, which is what tr does.
       from.forEach((c, i) => map.set(c, to.length ? (to[i] ?? to[to.length - 1]) : ""));
       return stdin.map(l => T([...String(l)].map(ch =>
-        flags.has("d") ? (map.has(ch) ? "" : ch) : (map.has(ch) ? map.get(ch) : ch)).join("") || " "));
+        flags.has("d") ? (map.has(ch) ? "" : ch) : (map.has(ch) ? map.get(ch) : ch)).join("")));
     },
   };
 
@@ -657,14 +709,14 @@
     usage: "rev [file...]",
     hint: { ko: "각 줄을 뒤집기", en: "reverse each line" },
     run: (args, stdin) => emit(inputs(args, stdin, "rev"),
-      (src, out) => src.lines.forEach(l => out.push(T([...String(l)].reverse().join("") || " ")))),
+      (src, out) => src.lines.forEach(l => out.push(T([...String(l)].reverse().join(""))))),
   };
 
   C.tac = {
     usage: "tac [file...]",
     hint: { ko: "줄 순서를 뒤집기", en: "reverse the order of lines" },
     run: (args, stdin) => emit(inputs(args, stdin, "tac"),
-      (src, out) => src.lines.slice().reverse().forEach(l => out.push(T(l || " ")))),
+      (src, out) => src.lines.slice().reverse().forEach(l => out.push(T(l)))),
   };
 
   C.seq = {
@@ -691,7 +743,7 @@
     hint: { ko: "통과시키며 파일에도 쓰기 (쓰기는 실패)", en: "pass through and also write (the write fails)" },
     run: (args, stdin) => {
       const target = (args || []).find(a => !a.startsWith("-"));
-      const out = (stdin || []).map(l => T(l || " "));
+      const out = (stdin || []).map(l => T(l));
       // Real tee reports the open failure on stderr and keeps streaming stdout.
       if (target) out.unshift(err("tee: " + target + ": " + EROFS));
       return out.length ? out : [err("tee: missing operand")];
@@ -790,6 +842,272 @@
       T("none on /proc type proc (ro,nosuid,nodev,noexec)"),
       T("(ro: the whole tree is immutable, which is why writes return EROFS)", { dim: true }),
     ],
+  };
+
+  // ── encoding and inspection ───────────────────────────────────────────────
+  C.base64 = {
+    usage: "base64 [-d] [file...]",
+    hint: { ko: "base64 인코딩 / 디코딩", en: "base64 encode or decode" },
+    run: (args, stdin) => {
+      const { flags, rest } = parseArgs(args);
+      const res = inputs(rest, stdin, "base64");
+      if (res.usage) return [err(res.usage)];
+      const text = res.sources.flatMap(s => s.lines).join("\n");
+      try {
+        if (flags.has("d")) {
+          const bin = atob(text.replace(/\s+/g, ""));
+          const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+          return new TextDecoder().decode(bytes).split("\n").map(l => T(l));
+        }
+        // btoa is byte-oriented, so UTF-8 has to be encoded first or Hangul throws.
+        const bin = String.fromCharCode(...new TextEncoder().encode(text));
+        const b64 = btoa(bin);
+        // Real base64 wraps at 76 columns.
+        return (b64.match(/.{1,76}/g) || [""]).map(l => T(l));
+      } catch (e) {
+        return [err("base64: invalid input")];
+      }
+    },
+  };
+
+  C.xxd = {
+    usage: "xxd [file]",
+    hint: { ko: "16진 덤프", en: "hex dump" },
+    run: (args, stdin) => {
+      const res = inputs(args, stdin, "xxd");
+      if (res.usage) return [err(res.usage)];
+      const bytes = new TextEncoder().encode(res.sources.flatMap(s => s.lines).join("\n"));
+      const out = [];
+      for (let i = 0; i < bytes.length && i < 4096; i += 16) {
+        const row = bytes.slice(i, i + 16);
+        const hex = [];
+        for (let j = 0; j < 16; j += 2) {
+          const a = row[j], b = row[j + 1];
+          hex.push((a === undefined ? "  " : a.toString(16).padStart(2, "0")) +
+                   (b === undefined ? "  " : b.toString(16).padStart(2, "0")));
+        }
+        const ascii = [...row].map(v => (v >= 32 && v < 127) ? String.fromCharCode(v) : ".").join("");
+        out.push(T(i.toString(16).padStart(8, "0") + ": " + hex.join(" ").padEnd(40) + " " + ascii));
+      }
+      if (bytes.length > 4096) out.push(T("(truncated at 4096 bytes)", { dim: true }));
+      return out;
+    },
+  };
+
+  // diff(1) normal format, off a plain longest-common-subsequence table. Small
+  // files only, which is all this tree has.
+  C.diff = {
+    usage: "diff <file1> <file2>",
+    hint: { ko: "두 파일 비교", en: "compare two files" },
+    run: (args) => {
+      const { rest } = parseArgs(args);
+      if (rest.length < 2) return [err("diff: missing operand")];
+      const read = (p) => { const r = readFile(p); return r.error ? null : r.lines.map(String); };
+      const a = read(rest[0]), b = read(rest[1]);
+      if (!a) return [err("diff: " + rest[0] + ": No such file or directory")];
+      if (!b) return [err("diff: " + rest[1] + ": No such file or directory")];
+
+      const m = a.length, n = b.length;
+      const lcs = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+      for (let i = m - 1; i >= 0; i--)
+        for (let j = n - 1; j >= 0; j--)
+          lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+
+      const hunks = [];
+      let i = 0, j = 0;
+      while (i < m || j < n) {
+        if (i < m && j < n && a[i] === b[j]) { i++; j++; continue; }
+        const si = i, sj = j;
+        const del = [], add = [];
+        while (i < m && (j >= n || lcs[i + 1][j] >= lcs[i][j + 1])) { del.push(a[i]); i++; if (i < m && j < n && a[i] === b[j]) break; }
+        while (j < n && (i >= m || lcs[i][j + 1] > lcs[i + 1][j])) { add.push(b[j]); j++; if (i < m && j < n && a[i] === b[j]) break; }
+        if (!del.length && !add.length) { i++; j++; continue; }
+        hunks.push({ si, sj, del, add });
+      }
+      if (!hunks.length) return [];
+
+      const range = (start, len) => len === 1 ? String(start + 1) : `${start + 1},${start + len}`;
+      const out = [];
+      for (const h of hunks) {
+        const op = h.del.length && h.add.length ? "c" : h.del.length ? "d" : "a";
+        out.push(T(`${range(h.si, h.del.length || 1)}${op}${range(h.sj, h.add.length || 1)}`, { strong: true }));
+        h.del.forEach(l => out.push(T("< " + l, { warn: true })));
+        if (op === "c") out.push(T("---", { dim: true }));
+        h.add.forEach(l => out.push(T("> " + l)));
+      }
+      return out;
+    },
+  };
+
+  // ── trivia the shell is expected to know ──────────────────────────────────
+  C.nproc = {
+    usage: "nproc",
+    hint: { ko: "논리 코어 수", en: "number of processing units" },
+    // navigator.hardwareConcurrency is the real figure the browser exposes.
+    run: () => [T(String((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 1))],
+  };
+  C.arch = {
+    hidden: true, usage: "arch", hint: { ko: "아키텍처", en: "machine architecture" },
+    run: () => [T("wasm32")],
+  };
+  C.tty = {
+    hidden: true, usage: "tty", hint: { ko: "터미널 장치", en: "terminal device" },
+    run: () => [T("/dev/tty1")],
+  };
+  C.groups = {
+    hidden: true, usage: "groups", hint: { ko: "소속 그룹", en: "group memberships" },
+    run: () => {
+      const u = window.getPromptName ? window.getPromptName() : "anonymous";
+      return [T(u + " users")];
+    },
+  };
+  // The real thing: one line, the effective user. The site introduction that used to
+  // live here is `about`, which is where a visitor looking for it will end up anyway.
+  C.whoami = {
+    usage: "whoami",
+    hint: { ko: "현재 사용자", en: "print the current user" },
+    run: () => [T(window.getPromptName ? window.getPromptName() : "anonymous")],
+  };
+  C.logname = {
+    hidden: true, usage: "logname", hint: { ko: "로그인 이름", en: "login name" },
+    run: C.whoami.run,
+  };
+
+  C.export = {
+    usage: "export NAME=value",
+    hint: { ko: "환경변수 설정", en: "set an environment variable" },
+    run: (args) => {
+      if (!args.length) return Object.entries(envMap()).map(([k, v]) => T('declare -x ' + k + '="' + v + '"'));
+      const out = [];
+      for (const a of args) {
+        const m = String(a).match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+        if (!m) { out.push(err("export: `" + a + "': not a valid identifier")); continue; }
+        userEnv[m[1]] = m[2].replace(/^["']|["']$/g, "");
+      }
+      return out;
+    },
+  };
+
+  C.unset = {
+    hidden: true, usage: "unset NAME",
+    hint: { ko: "환경변수 해제", en: "unset an environment variable" },
+    run: (args) => {
+      for (const a of args) delete userEnv[a];
+      return [];
+    },
+  };
+
+  C.set = {
+    hidden: true, usage: "set",
+    hint: { ko: "셸 변수 목록", en: "list shell variables" },
+    run: () => Object.entries(envMap()).map(([k, v]) => T(k + "=" + v)),
+  };
+
+  C.true = {
+    hidden: true, usage: "true", hint: { ko: "성공 종료", en: "exit successfully" },
+    run: () => [],
+  };
+  C.false = {
+    hidden: true, usage: "false", hint: { ko: "실패 종료", en: "exit with failure" },
+    // The only way to signal non-zero from here is a warn block, which is what
+    // sets $? to 1 in terminal-view.
+    run: () => [T("", { warn: true })],
+  };
+
+  C.shuf = {
+    usage: "shuf [-n N] [file...]",
+    hint: { ko: "무작위 순서로", en: "shuffle lines" },
+    run: (args, stdin) => {
+      const { opts, rest } = parseArgs(args);
+      const res = inputs(rest, stdin, "shuf");
+      if (res.usage) return [err(res.usage)];
+      const lines = res.sources.flatMap(s => s.lines).map(String);
+      for (let i = lines.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [lines[i], lines[j]] = [lines[j], lines[i]];
+      }
+      return (opts.n === undefined ? lines : lines.slice(0, opts.n)).map(l => T(l));
+    },
+  };
+
+  C.factor = {
+    hidden: true, usage: "factor <number>",
+    hint: { ko: "소인수분해", en: "factor a number" },
+    run: (args) => args.map(a => {
+      let n = parseInt(a, 10);
+      if (!Number.isFinite(n) || n < 1) return err("factor: `" + a + "' is not a valid positive integer");
+      const parts = [];
+      for (let d = 2; d * d <= n; d++) while (n % d === 0) { parts.push(d); n /= d; }
+      if (n > 1) parts.push(n);
+      return T(a + ": " + parts.join(" "));
+    }),
+  };
+
+  C.uuidgen = {
+    hidden: true, usage: "uuidgen", hint: { ko: "UUID 생성", en: "generate a UUID" },
+    run: () => {
+      try { return [T(crypto.randomUUID())]; }
+      catch { return [err("uuidgen: no secure random source")]; }
+    },
+  };
+
+  C.fold = {
+    hidden: true, usage: "fold [-w N] [file...]",
+    hint: { ko: "지정 폭에서 접기", en: "wrap lines at a width" },
+    run: (args, stdin) => {
+      const { opts, rest } = parseArgs(args);
+      const w = opts.w || 80;
+      const res = inputs(rest, stdin, "fold");
+      if (res.usage) return [err(res.usage)];
+      const out = res.errors.map(err);
+      for (const src of res.sources) {
+        for (const l of src.lines) {
+          const s2 = String(l);
+          if (!s2.length) { out.push(T("")); continue; }
+          for (let i = 0; i < s2.length; i += w) out.push(T(s2.slice(i, i + w)));
+        }
+      }
+      return out;
+    },
+  };
+
+  C.paste = {
+    hidden: true, usage: "paste <file1> <file2>",
+    hint: { ko: "두 파일을 나란히", en: "merge files side by side" },
+    run: (args, stdin) => {
+      const { rest } = parseArgs(args);
+      if (rest.length < 2) return [err("paste: needs two files")];
+      const a = readFile(rest[0]), b = readFile(rest[1]);
+      if (a.error) return [err("paste: " + rest[0] + ": " + a.error)];
+      if (b.error) return [err("paste: " + rest[1] + ": " + b.error)];
+      const n = Math.max(a.lines.length, b.lines.length);
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(T((a.lines[i] || "") + String.fromCharCode(9) + (b.lines[i] || "")));
+      return out;
+    },
+  };
+
+  C.printf = {
+    hidden: true, usage: "printf <format> [args...]",
+    hint: { ko: "형식 출력", en: "formatted output" },
+    run: (args) => {
+      if (!args.length) return [err("printf: usage: printf format [arguments]")];
+      const fmt = args[0].replace(/^["']|["']$/g, "");
+      const rest = args.slice(1);
+      let i = 0;
+      // Escapes are assembled from char codes: every editing pass that touched a
+      // literal backslash in this file so far has eaten it.
+      const BS = String.fromCharCode(92), NL = String.fromCharCode(10), TAB = String.fromCharCode(9);
+      const text = fmt
+        .split(BS + "n").join(NL)
+        .split(BS + "t").join(TAB)
+        .replace(/%[sd]/g, (m) => {
+          const v = rest[i++];
+          return m === "%d" ? String(parseInt(v, 10) || 0) : String(v === undefined ? "" : v);
+        })
+        .replace(/%%/g, "%");
+      return text.split(NL).map(l => T(l));
+    },
   };
 
   window.COREUTILS = C;

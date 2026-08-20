@@ -14,6 +14,22 @@ window.SITE_DATA = {
     cvEn: "https://github.com/99JIK/cv/blob/main/cv-en.pdf",  // CV (en), hosted in the cv repo
     // Footer (c) year and the "updated" date come from __BUILD_DATE__, injected by
     // scripts/build.mjs. Hand-written dates rot: the old updatedLabel sat 4 months stale.
+    // Public iCal feed. Not a secret: anyone can already read this calendar, which
+    // is why it lives here instead of in a repo secret that can quietly expire.
+    // No CORS headers on Google's side, so the browser cannot fetch it directly;
+    // .github/workflows/calendar.yml pulls it and commits public/calendar.json.
+    icalUrl: "https://calendar.google.com/calendar/ical/99jik%4099jik.com/public/basic.ics",
+    calendarId: "99jik@99jik.com",
+    // Browser API key: the calendar is read live and nothing needs syncing. An empty
+    // string falls back to the committed public/calendar.json snapshot, and so does a
+    // failed request, so a bad key or a quota problem never empties the calendar.
+    //
+    // The key is public by design (it ships in the bundle). Its only protection is the
+    // HTTP referrer restriction set in Google Cloud, so that restriction is not
+    // optional. A referrer-restricted key also fails from localhost unless localhost
+    // is on the allow list, which just means local dev reads the snapshot.
+    gcalApiKey: "AIzaSyCTq5wjQREru3sWUbGXvyiFPM4JhRs847Y",
+    bookingUrl: "https://calendar.app.google/ApbFL4J7C88LE2YQ7",  // "book a slot" page
     gaTagId: "G-4MY31MY2XZ",                          // GA4 measurement ID (empty string disables)
   },
 
