@@ -735,6 +735,31 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
+check("a phone lands on the document, not a terminal", () => {
+  const m = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+
+  // Both files gate on the same query. If they drift, a device can fail the desktop
+  // test and still be handed the terminal, which is the case this exists to prevent.
+  const mq = m.match(/const DESKTOP_MQ = "([^"]+)"/);
+  if (!mq) throw new Error("main.jsx has no desktop media query");
+  if (!d.includes(mq[1])) throw new Error("main.jsx and desktop.jsx disagree on what a desktop is");
+
+  // An explicit ?view= beats the device, or the link handed to a recruiter changes
+  // meaning depending on the phone they open it on.
+  if (!/viewFromUrl\(\) \|\| defMode/.test(m)) throw new Error("the url no longer wins over the device");
+
+  // The url is cleaned by comparing against the *effective* default. Comparing to the
+  // stored one instead would drop ?view=terminal on a phone, so a visitor who chose
+  // the terminal would be bounced back to the document on every reload.
+  if (/mode === tweaks\.defaultMode/.test(m)) throw new Error("url cleanup uses the stored default, losing the visitor's switch");
+  if (!/mode === defMode/.test(m)) throw new Error("url cleanup does not use the effective default");
+
+  // Read once, so resizing past the breakpoint does not swap the view mid-read.
+  if (!/React\.useState\(defaultModeFor\)/.test(m)) throw new Error("the default is recomputed on render");
+  return true;
+});
+
 check("desktop icons wrap by height", () => {
   // One fixed column needed 826px of height for nine entries, so a 1366x768 laptop
   // cut the last three off with no way to reach them. They flow down and then across.

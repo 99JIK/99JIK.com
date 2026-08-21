@@ -108,12 +108,30 @@ function viewFromUrl() {
   } catch { return null; }
 }
 
+// The desktop needs room and a real pointer; the same test decides what a visitor
+// lands on. A phone that cannot run the desktop should not be handed a bare terminal
+// either: typing commands on a touch keyboard that covers half the screen is the
+// worst of both. It gets the document, which is a document and reflows like one.
+//
+// Nothing writes `defaultMode` today, so this overrides no stored choice. `?view=`
+// still wins, and a visitor who switches carries that in the URL across reloads.
+const DESKTOP_MQ = "(min-width: 860px) and (pointer: fine)";
+function defaultModeFor() {
+  const pref = window.PREFS.load().defaultMode;
+  if (pref === "easy") return "easy";
+  try { if (!window.matchMedia(DESKTOP_MQ).matches) return "easy"; } catch {}
+  return pref;
+}
+
 const BOOT_KEY = "99jik:booted";
 const BOOT_VERSION = "2";   // bumped: the boot now hands over to a desktop
 
 function App() {
   const [tweaks, setTweaks] = React.useState(window.PREFS.load);
-  const [mode, setMode] = React.useState(() => viewFromUrl() || window.PREFS.load().defaultMode);
+  // Read once: if the window is resized past the breakpoint mid-visit, the view the
+  // visitor is reading should not swap out from under them.
+  const [defMode] = React.useState(defaultModeFor);
+  const [mode, setMode] = React.useState(() => viewFromUrl() || defMode);
   const [bootDone, setBootDone] = React.useState(() => {
     // Reduced motion skips the boot log entirely: it is 28 timed lines of pure motion.
     if (window.prefersReducedMotion()) return true;
@@ -146,11 +164,11 @@ function App() {
   React.useEffect(() => {
     try {
       const url = new URL(location.href);
-      if (mode === tweaks.defaultMode) url.searchParams.delete("view");
+      if (mode === defMode) url.searchParams.delete("view");
       else url.searchParams.set("view", mode);
       history.replaceState(null, "", url.pathname + url.search + url.hash);
     } catch {}
-  }, [mode, tweaks.defaultMode]);
+  }, [mode, defMode]);
 
   // `reboot` easter egg → replay the boot sequence on demand.
   React.useEffect(() => {
