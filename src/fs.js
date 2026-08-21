@@ -1,4 +1,4 @@
-// Virtual filesystem — real-feeling ls/cd/pwd/cat over site content.
+// Virtual filesystem - real-feeling ls/cd/pwd/cat over site content.
 // Tree is built from SITE_DATA so projects/publications/etc stay in sync with data.js.
 
 (function () {
@@ -6,6 +6,94 @@
   const HOME = "/home/jeongin";
 
   const store = window.PREFS.store;  // guarded localStorage, see prefs.js
+
+  // ~/Desktop is a real directory holding real .desktop files, which is what a
+  // desktop is on the system this is imitating. The icons are drawn from these, so
+  // the file manager and the desktop cannot show different things: they are the
+  // same folder. `Exec` names an app in desktop.jsx, which validates it.
+  const LAUNCHERS = [
+    { file: "terminal.desktop", name: "Terminal", exec: "terminal", icon: "▶_",
+      comment: "The shell this whole place is shaped like" },
+    { file: "files.desktop",    name: "Files",    exec: "files",    icon: "▤",
+      comment: "Browse this filesystem without typing" },
+    { file: "browser.desktop",  name: "Browser",  exec: "browser",  icon: "◇",
+      comment: "For the part of the web that permits being framed" },
+    { file: "chat.desktop",     name: "Chat",     exec: "chat",     icon: "✉",
+      comment: "Reaches a phone; replies come back here" },
+    { file: "music.desktop",    name: "Music",    exec: "music",    icon: "♪",
+      comment: "The playlist, read live from YouTube" },
+    { file: "cv.desktop",       name: "CV",       exec: "cv",       icon: "PDF",
+      comment: "Fetched from the cv repo and rendered here" },
+  ];
+
+  // The one file on the desktop that is not a launcher. It points the way and then
+  // gets out of it: what is here, and how to start looking. Not a tour of how it was
+  // built, and not a list of the things that are more fun to find.
+  function README(D) {
+    return [
+      "# 어서 오세요",
+      "",
+      "터미널을 흉내 낸 사이트입니다. 실제 리눅스 셸을 따라 만들었고,",
+      "생각보다 많은 명령이 실제로 동작합니다. 뭐가 되는지 찾아보는 것도",
+      "나름의 재미일 겁니다.",
+      "",
+      "## 급하시면",
+      "",
+      "아래 독의 **Easy Mode**. 같은 내용이 평범한 문서로 나옵니다.",
+      "",
+      "## 터미널",
+      "",
+      "궁금한 것부터 치면 됩니다.",
+      "",
+      "```",
+      "about         짧은 소개",
+      "research      연구 관심사",
+      "projects      만든 것들",
+      "publications  논문",
+      "now           요즘 일정",
+      "contact       연락처",
+      "```",
+      "",
+      "`help` 로 전체 목록, `man <명령>` 으로 각각의 사용법을 봅니다.",
+      "파이프도 됩니다. `ls | wc -l`",
+      "",
+      "여기부터는 직접 돌아다니는 편이 낫습니다. `ls`, `cd`, `cat`, `tree`,",
+      "`find`, `grep` 이 되고, `~` 아래에 보이는 것보다 좀 더 있습니다.",
+      "",
+      "## 바탕화면",
+      "",
+      "아이콘은 `~/Desktop` 폴더입니다. 파일 창으로 들어가면 같은 게 보입니다.",
+      "",
+      "- 배경과 파일 창 안에서 **우클릭**",
+      "- 창을 가장자리로 끌면 스냅, 아무 변이나 모서리로 크기 조절",
+      "- 단축키는 **설정** 창에 (`Ctrl+Alt+,`)",
+      "- 창 배치는 이 브라우저에 남아서 다음에 와도 그대로입니다",
+      "",
+      "---",
+      "",
+      "# Welcome",
+      "",
+      "A site shaped like a terminal. It follows a real shell closely enough that a",
+      "surprising number of commands work; finding out which is part of the point.",
+      "",
+      "**In a hurry?** **Easy Mode** in the dock has the same content as a document.",
+      "",
+      "**In the terminal**, start with `about`, `research`, `projects`,",
+      "`publications`, `now`, `contact`. `help` lists everything, `man <cmd>`",
+      "explains one, and pipes work (`ls | wc -l`).",
+      "",
+      "After that, look around: `ls`, `cd`, `cat`, `tree`, `find` and `grep` all do",
+      "what you would expect, and there is a little more under `~` than shows up.",
+      "",
+      "**The desktop.** Icons are the contents of `~/Desktop`. Right-click the",
+      "wallpaper and inside Files, drag a window to an edge to snap it, and find the",
+      "shortcuts in **Settings**. Your layout stays in this browser.",
+      "",
+      "---",
+      "",
+      "[" + D.site.domain + "](https://" + D.site.domain + ") · " + D.profile.email,
+    ];
+  }
 
   // Build the tree. Files carry { type, size, mtime, content } where content is an
   // array of text blocks returned by `cat`.
@@ -18,7 +106,6 @@
     D.projects.forEach((p, i) => {
       projectsDir[p.slug + ".md"] = {
         type: "file",
-        size: 512 + i * 48,
         mtime: dayAgo(i + 1),
         content: [
           `# ${p.title_en} (${p.year})`,
@@ -28,6 +115,7 @@
           "",
           p.summary_en,
           p.summary_ko,
+          ...((p.detail_en || []).length ? ["", ...p.detail_en.map(d => "- " + d)] : []),
           "",
           `repo: github.com/${D.site.github}/${p.slug}`,
           `(tip: 'cat ${p.slug}' from the terminal gives a prettier view.)`,
@@ -39,7 +127,6 @@
     D.research.forEach((r, i) => {
       researchDir[r.tag.toLowerCase() + ".md"] = {
         type: "file",
-        size: 240 + i * 30,
         mtime: dayAgo(10 + i),
         content: [
           `# ${r.title_en}`,
@@ -50,12 +137,12 @@
       };
     });
 
-    // Jeongin's home — all the personal / portfolio content lives here.
+    // Jeongin's home - all the personal / portfolio content lives here.
     const jeonginHome = {
       type: "dir", mtime: dayAgo(0),
       children: {
         "about": {
-          type: "file", size: 420, mtime: dayAgo(0),
+          type: "file", mtime: dayAgo(0),
           content: [
             `${D.profile.name_en} (${D.profile.name_ko})`,
             `${D.profile.role_en} -- ${D.profile.affiliation_en}`,
@@ -65,18 +152,49 @@
             "Teaching both sides to reason about correctness together.",
           ],
         },
+        "Desktop": {
+          type: "dir", mtime: dayAgo(0),
+          children: Object.assign({
+            "README.md": { type: "file", mtime: dayAgo(0), content: README(D) },
+          }, Object.fromEntries(LAUNCHERS.map((a, i) => [a.file, {
+            type: "file", mtime: dayAgo(30 + i),
+            content: [
+              "[Desktop Entry]",
+              "Type=Application",
+              "Name=" + a.name,
+              "Comment=" + a.comment,
+              "Exec=" + a.exec,
+              "Icon=" + a.icon,
+              "Terminal=false",
+            ],
+          }]))),
+        },
         "projects": { type: "dir", mtime: dayAgo(1), children: projectsDir },
         "research": { type: "dir", mtime: dayAgo(7), children: researchDir },
         "publications.txt": {
-          type: "file", size: 180, mtime: dayAgo(3),
-          content: D.publications.map(p => `${p.year}  ${p.venue.padEnd(10)} ${p.title} (${p.role})`),
+          type: "file", mtime: dayAgo(3),
+          content: D.publications.flatMap(p => [
+            `${p.year}  ${p.venue}${p.pages ? ", pp." + p.pages : ""}`,
+            `  ${p.title_ko}`,
+            `  ${p.title_en}`,
+            `  ${p.authors}`,
+            "",
+          ]).slice(0, -1),
+        },
+        "patents.txt": {
+          type: "file", mtime: dayAgo(3),
+          content: (D.patents || []).flatMap(x => [
+            `${x.year}  ${x.title_ko}`,
+            `      ${x.title_en}`,
+            `      ${x.status_en}. ${x.holder_en}.`,
+          ]),
         },
         "skills.json": {
-          type: "file", size: 256, mtime: dayAgo(14),
+          type: "file", mtime: dayAgo(14),
           content: JSON.stringify(D.skills, null, 2).split("\n"),
         },
         "contact": {
-          type: "file", size: 140, mtime: dayAgo(30),
+          type: "file", mtime: dayAgo(30),
           content: [
             `email:    ${D.profile.email}`,
             `github:   github.com/${D.profile.github}`,
@@ -84,110 +202,55 @@
             `til:      ${D.site.til}`,
           ],
         },
+        // Read from the calendar when opened. What I am on lately is already recorded
+        // somewhere honest, so typing it a second time would only let the two drift.
         "now.log": {
-          type: "file", size: 128, mtime: dayAgo(0),
-          content: D.now.length
-            ? D.now.map((n, i) => `[${new Date(now - i*3600000).toISOString().slice(0,16).replace("T"," ")}] ${n}`)
-            : ["(empty)"],
+          type: "file", mtime: dayAgo(0), live: "now", size: 0,
+          content: ["(generated on read from the calendar)"],
         },
-        "cv.pdf": {
-          type: "file", size: 248320, mtime: dayAgo(21),
-          content: ["(binary -- run `cv` for the Korean and English PDFs)"],
-        },
-        ".secret_todo": {
-          type: "file", size: 64, mtime: dayAgo(0), hidden: true,
-          content: [
-            "# secret TODO",
-            "- [ ] finish SLM fuzzer prototype",
-            "- [ ] reply to advisor's email (3 days and counting)",
-            "- [x] rerun the Q5 comparison with a fixed seed",
-            "- [ ] write up the oracle-confidence idea before it evaporates",
-          ],
+        // Not a stub PDF pretending to be the real thing: the CV lives in another
+        // repo, so this is a link to it, the same as ~/til.
+        "cv": {
+          type: "link", target: D.site.cvKo, mtime: dayAgo(21),
+          content: [`symlink -> ${D.site.cvKo}`],
         },
         ".lab": {
           type: "dir", mtime: dayAgo(1), hidden: true,
           children: {
-            "notebook-2026-04.md": {
-              type: "file", size: 512, mtime: dayAgo(0),
-              content: [
-                "# lab notebook — Apr 2026",
-                "",
-                "- tried swapping llama.cpp Q4 → Q5 for fuzzer SLM.",
-                "  seed programs segfault 2x more often. good signal? or just noise?",
-                "- advisor: \"the oracle is weak. tighten the differential.\"",
-                "- idea: use mutation score as oracle confidence proxy.",
-              ],
+            // What stays true when the topic changes.
+            // grad.md is the lab as an organisation; this is the research itself.
+            "principles.md": {
+              type: "file", mtime: dayAgo(2),
+              content: D.notes.principles,
             },
-            "submission-draft.txt": {
-              type: "file", size: 240, mtime: dayAgo(6),
-              content: [
-                "[INTERNAL DRAFT — do not cite]",
-                "Title: Small Language Models as Differential Oracles",
-                "       for Underspecified Library APIs",
-                "Status: section 4 (evaluation) — 40% written",
-                "Deadline: tighter than it feels.",
-              ],
+            // The lab as an organisation, as opposed to principles.md, which is
+            // about the research.
+            "grad.md": {
+              type: "file", mtime: dayAgo(2),
+              content: D.notes.grad,
             },
           },
         },
         ".midnight": {
           type: "dir", mtime: dayAgo(3), hidden: true,
           children: {
-            "thoughts.md": {
-              type: "file", size: 180, mtime: dayAgo(0),
-              content: [
-                "# 03:42 KST",
-                "",
-                "what if tests wrote themselves, but badly, on purpose,",
-                "to expose what the spec was silently assuming?",
-                "",
-                "half-asleep idea. revisit sober.",
-              ],
-            },
             "playlist.m3u": {
-              type: "file", size: 96, mtime: dayAgo(10),
-              content: [
-                "# midnight lab playlist",
-                "tycho — a walk",
-                "bonobo — kerala",
-                "boards of canada — roygbiv",
-                "jon hopkins — open eye signal",
-              ],
+              // Read live from the YouTube Data API when opened, so it is an actual
+              // playlist rather than a list of bands someone thought sounded right.
+              type: "file", mtime: dayAgo(0),
+              live: D.site.youtubePlaylistId ? "playlist" : null,
+              size: D.site.youtubePlaylistId ? 0 : undefined,
+              content: D.site.youtubePlaylistId
+                ? ["(generated on read from the YouTube playlist)"]
+                : ["#EXTM3U", "", "(no playlist configured)"],
             },
           },
         },
-        ".graveyard": {
-          type: "dir", mtime: dayAgo(90), hidden: true,
-          children: {
-            "README.md": {
-              type: "file", size: 128, mtime: dayAgo(90),
-              content: [
-                "# projects that didn't make it",
-                "each one taught me something. most of them taught me to ship faster.",
-              ],
-            },
-            "gpt-unit-test-writer.dead": {
-              type: "file", size: 72, mtime: dayAgo(240),
-              content: [
-                "abandoned 2025-08. ran into context limits on real codebases.",
-                "lessons: scope smaller. oracle first.",
-              ],
-            },
-            "ast-diff-visualizer.dead": {
-              type: "file", size: 72, mtime: dayAgo(180),
-              content: [
-                "abandoned 2025-10. someone already built this better.",
-                "lessons: search before coding.",
-              ],
-            },
-          },
-        },
-        "dreams.txt": {
-          type: "file", size: 96, mtime: dayAgo(5),
-          content: [
-            "a compiler that catches all bugs before I write them.",
-            "an LLM that says 'I don't know' when it doesn't.",
-          ],
+        "repos": {
+          // Read from the GitHub API when opened. The `projects` command shows a
+          // curated few; this is everything that actually exists.
+          type: "file", mtime: dayAgo(0), live: "repos", size: 0,
+          content: ["(generated on read from api.github.com)"],
         },
         "til": {
           type: "link", target: D.site.tilUrl, mtime: dayAgo(1), size: 22,
@@ -204,7 +267,7 @@
           type: "dir", mtime: dayAgo(365),
           children: {
             "README": {
-              type: "file", size: 96, mtime: dayAgo(365),
+              type: "file", mtime: dayAgo(365),
               content: [
                 "binaries live somewhere in PATH. you don't need to see them.",
                 "`cd ~` or `cd /home/jeongin` to get back to the interesting stuff.",
@@ -216,11 +279,11 @@
           type: "dir", mtime: dayAgo(100),
           children: {
             "hostname": {
-              type: "file", size: 6, mtime: dayAgo(500),
+              type: "file", mtime: dayAgo(500),
               content: [D.site.handle],
             },
             "motd": {
-              type: "file", size: 720, mtime: dayAgo(30),
+              type: "file", mtime: dayAgo(30),
               content: [
                 `=== ${D.site.handle} ===`,
                 "",
@@ -236,6 +299,8 @@
                 "  cd ~            my files live under /home/jeongin",
                 "  cd /            the whole tree",
                 "  ls -a           hidden entries (there are more than you think)",
+                "  cat /var/log/deploy.log   commit history, read live",
+                "  cat /home/memo/til.log    recent notes from " + D.site.til + ", read live",
                 "  tree            layout at a glance",
                 "  find / grep     search names and contents (-a includes hidden)",
                 "  head tail wc    the usual text tools; pipes work",
@@ -247,7 +312,7 @@
               ],
             },
             "os-release": {
-              type: "file", size: 200, mtime: dayAgo(60),
+              type: "file", mtime: dayAgo(60),
               content: [
                 `NAME="JIKOS"`,
                 `VERSION="1.0 (${D.site.handle})"`,
@@ -259,9 +324,9 @@
               ],
             },
             "passwd": {
-              type: "file", size: 160, mtime: dayAgo(400),
+              type: "file", mtime: dayAgo(400),
               content: [
-                "# partial — only the interesting accounts",
+                "# partial: only the interesting accounts",
                 "jeongin:x:1000:1000:Master's candidate:/home/jeongin:/bin/bash",
                 "stlab:x:1001:1001:Software Testing Lab:/home/stlab:/bin/bash",
                 "memo:x:1002:1002:scratchpad:/home/memo:/bin/bash",
@@ -277,35 +342,48 @@
               type: "dir", mtime: dayAgo(0),
               children: {
                 "README": {
-                  type: "file", size: 160, mtime: dayAgo(0),
+                  type: "file", mtime: dayAgo(0),
                   content: [
                     "# memo/",
                     "",
-                    "scratchpad — thoughts I don't want to forget.",
-                    "(real notes live in /home/jeongin/.midnight/thoughts.md)",
+                    "Domain knowledge picked up while working. The things that cost an",
+                    "afternoon to find out and would cost another one to rediscover.",
+                    "",
+                    "  work.md          working principles, kept out of the lab notes",
+                    "  social.md        how the writing lands, mail included",
+                    "",
+                    "One file per domain, listed in src/data.js under notes.memo:",
+                    ...(D.notes.memo.length
+                      ? D.notes.memo.map(m => `  ${m.file.padEnd(16)} ${m.title}`)
+                      : ["  (none yet)"]),
                   ],
                 },
-                "ideas.md": {
-                  type: "file", size: 240, mtime: dayAgo(2),
-                  content: [
-                    "# ideas",
-                    "",
-                    "- [ ] write up the SLM oracle confidence experiment",
-                    "- [ ] try seed mutation guided by path coverage",
-                    "- [ ] ask advisor about ISSTA deadline stretch",
-                    "- [ ] blog post: why unit-test LLMs are not enough",
-                  ],
+                "social.md": {
+                  type: "file", mtime: dayAgo(2),
+                  content: D.notes.social,
                 },
-                "reading.md": {
-                  type: "file", size: 200, mtime: dayAgo(5),
-                  content: [
-                    "# reading queue",
-                    "",
-                    "- Fuzz4All (ICSE'24)",
-                    "- TitanFuzz, FuzzGPT — LLM fuzzers",
-                    "- Xia et al. — LLM mutation testing",
-                    "- anything citing Barr et al. test oracle problem",
-                  ],
+                "work.md": {
+                  // The counterpart to ~/.lab/principles.md: the same person, the
+                  // other setting.
+                  type: "file", mtime: dayAgo(2),
+                  content: D.notes.work,
+                },
+                // One file per domain rather than one notes.md for everything: a
+                // simulator gotcha and something learned on the job are not the
+                // same subject and do not get read at the same time.
+                ...Object.fromEntries(D.notes.memo.map((m, i) => [
+                  m.file,
+                  {
+                    type: "file", mtime: dayAgo(i),
+                    content: ["# " + m.title, "", ...m.notes.map(n => "- " + n)],
+                  },
+                ])),
+                "til.log": {
+                  // Generated on read from the live feed, so it reports zero bytes
+                  // the way a /proc file does. Fetching 300KB of RSS on every page
+                  // load for a file most visitors never open is not worth it.
+                  type: "file", mtime: dayAgo(0), live: "til", size: 0,
+                  content: ["(generated on read from " + D.site.til + ")"],
                 },
               },
             },
@@ -318,30 +396,12 @@
                   content: ["symlink -> https://selab.knu.ac.kr"],
                 },
                 "about.txt": {
-                  type: "file", size: 160, mtime: dayAgo(60),
+                  type: "file", mtime: dayAgo(60),
                   content: [
-                    "# Software Testing Lab — KNU",
+                    "# Software Testing Lab, KNU",
                     "",
                     "Principal investigator, students, papers, meetings.",
                     "homepage symlink → selab.knu.ac.kr",
-                  ],
-                },
-                "course.md": {
-                  type: "file", size: 220, mtime: dayAgo(0),
-                  content: [
-                    "# weekly",
-                    "",
-                    "- Wed 09:00 — SW Testing 3H",
-                    "- Thu 09:00 — Java Programming 4H",
-                    "- Sat 09:00 — SW Testing 3H",
-                    "- ad-hoc — whiteboard sessions, usually 403",
-                  ],
-                },
-                "rooms.txt": {
-                  type: "file", size: 60, mtime: dayAgo(300),
-                  content: [
-                    "main: IT-5 523",
-                    "seminar: IT-5 403 (whiteboard sessions)",
                   ],
                 },
               },
@@ -352,7 +412,7 @@
           type: "dir", mtime: dayAgo(0),
           children: {
             "nothing.txt": {
-              type: "file", size: 14, mtime: dayAgo(0),
+              type: "file", mtime: dayAgo(0),
               content: ["as expected."],
             },
           },
@@ -363,16 +423,11 @@
             "log": {
               type: "dir", mtime: dayAgo(0),
               children: {
-                "site.log": {
-                  type: "file", size: 280, mtime: dayAgo(0),
-                  content: [
-                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] session started`,
-                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] banner anim: random pick`,
-                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] seeded scrollback: about, til`,
-                    `[${new Date(now).toISOString().slice(0,16).replace("T"," ")}] calendar.json: placeholder`,
-                    "",
-                    "(ephemeral — regenerated on load)",
-                  ],
+                "deploy.log": {
+                  // Read from the GitHub API when opened. The build no longer bakes
+                  // commit history in, so the log is current without a deploy.
+                  type: "file", mtime: dayAgo(0), live: "commits", size: 0,
+                  content: ["(generated on read from api.github.com)"],
                 },
               },
             },
@@ -382,22 +437,79 @@
     };
   }
 
+  // Sizes come from the content, not from a number someone typed. That is what makes
+  // `ls -l`, `wc -c`, `du` and `df` agree with each other and with `cat`.
+  function measure(node) {
+    if (node.type === "dir") {
+      for (const child of Object.values(node.children)) measure(child);
+      return;
+    }
+    if (node.type === "link") { node.size = (node.target || "").length; return; }
+    // A live file has no length until something reads it, so ls -l reports 0 the way
+    // it does for /proc. Measuring the placeholder would print a number that is not
+    // the size of anything.
+    if (node.live) { node.size = 0; return; }
+    // Files end with a newline, as they do on any POSIX system, so ls -l and wc -c agree.
+    const text = (node.content || []).join(String.fromCharCode(10)) + String.fromCharCode(10);
+    node.size = new TextEncoder().encode(text).length;
+  }
+
+  // TIL is a separate site, but GitHub Pages serves its feed with
+  // Access-Control-Allow-Origin: *, so the browser can read it directly. Live beats a
+  // build-time snapshot here: notes get written far more often than this site deploys.
+  function parseFeed(xml, limit) {
+    const pick = (block, tag) => {
+      const open = "<" + tag + ">", close = "</" + tag + ">";
+      const a = block.indexOf(open);
+      if (a < 0) return "";
+      const b = block.indexOf(close, a + open.length);
+      if (b < 0) return "";
+      let v = block.slice(a + open.length, b).trim();
+      const CD = "<![CDATA[";
+      if (v.startsWith(CD)) v = v.slice(CD.length);
+      if (v.endsWith("]]>")) v = v.slice(0, -3);
+      return v.trim();
+    };
+    return xml.split("<item>").slice(1, limit + 1).map(block => {
+      const d = new Date(pick(block, "pubDate"));
+      return {
+        title: pick(block, "title"),
+        link: pick(block, "link"),
+        date: isNaN(d) ? "" : d.toISOString().slice(0, 10),
+      };
+    }).filter(x => x.title);
+  }
+
   let ROOT = null;
-  function root() { if (!ROOT) ROOT = buildTree(); return ROOT; }
+  function root() {
+    if (!ROOT) {
+      ROOT = buildTree();
+      measure(ROOT);
+    }
+    return ROOT;
+  }
 
   // cwd is an absolute path string like "/home/jeongin" or "/etc".
   let cwd = store.get(CWD_KEY) || HOME;
   function getCwd() { return cwd; }
+  // Point the filesystem at a directory without recording it. There can be more
+  // than one terminal now, each standing somewhere different, so each one sets this
+  // to its own directory before it runs anything and reads it back afterwards.
+  // setCwd still persists, so a new shell opens where the last `cd` left off.
+  function enter(p) { cwd = normalize(p || HOME); }
   function setCwd(p) {
     cwd = normalize(p);
     store.set(CWD_KEY, cwd);
     window.dispatchEvent(new CustomEvent("promptpath"));
   }
   // Display: render HOME and its descendants as `~` / `~/...`; otherwise show full path.
-  function displayCwd() {
-    if (cwd === HOME) return "~";
-    if (cwd.startsWith(HOME + "/")) return "~" + cwd.slice(HOME.length);
-    return cwd;
+  // Takes an explicit path so a terminal can render its own prompt without first
+  // pointing the filesystem at itself.
+  function displayCwd(p) {
+    const at = p || cwd;
+    if (at === HOME) return "~";
+    if (at.startsWith(HOME + "/")) return "~" + at.slice(HOME.length);
+    return at;
   }
 
   // path utilities
@@ -537,6 +649,9 @@
       if (!node) { out.push({ kind: "text", text: `cat: ${a}: No such file or directory`, warn: true }); continue; }
       if (node.type === "dir") { out.push({ kind: "text", text: `cat: ${a}: Is a directory`, warn: true }); continue; }
       if (node.type === "link") { out.push({ kind: "link", href: node.target, text: node.content[0] }); continue; }
+      // Generated on read: the content comes from the network, so it renders as a
+      // component. Same trade-off as curl, and it cannot be piped.
+      if (node.live) { out.push({ kind: "live", source: node.live, path }); continue; }
       node.content.forEach(line => {
         if (!number) return out.push({ kind: "text", text: line });
         if (flags.has("b") && !String(line).trim()) return out.push({ kind: "text", text: line });
@@ -548,7 +663,7 @@
 
   // for Tab completion
   function complete(partial) {
-    // partial is e.g. "proj" or "projects/sil" — complete the last segment
+    // partial is e.g. "proj" or "projects/sil" - complete the last segment
     const hasSlash = partial.includes("/");
     const dirPart = hasSlash ? partial.slice(0, partial.lastIndexOf("/") + 1) : "";
     const frag = hasSlash ? partial.slice(partial.lastIndexOf("/") + 1) : partial;
@@ -610,10 +725,10 @@
   }
 
   // find: walk tree under <path> (or cwd), print matching entries.
-  //   find                 — everything under cwd
-  //   find /etc            — everything under /etc
-  //   find . -name "*.md"  — filter by name glob
-  //   find / -name secret* — glob works without quotes too
+  //   find                 - everything under cwd
+  //   find /etc            - everything under /etc
+  //   find . -name "*.md"  - filter by name glob
+  //   find / -name secret* - glob works without quotes too
   function find(args) {
     // Pull `-name <pattern>` out before parseArgs. That helper splits any -xyz into
     // single-char flags, so -name used to set the `a` flag as a side effect (hidden
@@ -664,11 +779,11 @@
   }
 
   // grep: search file contents under <path> (recursive by default).
-  //   grep <pattern>              — search under cwd
-  //   grep <pattern> <path>       — search under <path>
-  //   grep -i <pattern> <path>    — case insensitive
-  //   grep -n <pattern> <path>    — show line numbers
-  //   grep -a <pattern> <path>    — include hidden files
+  //   grep <pattern>              - search under cwd
+  //   grep <pattern> <path>       - search under <path>
+  //   grep -i <pattern> <path>    - case insensitive
+  //   grep -n <pattern> <path>    - show line numbers
+  //   grep -a <pattern> <path>    - include hidden files
   function grep(args, lang, stdin) {
     // -A/-B/-C take counts, so pull them out before flag splitting.
     let after = 0, before = 0;
@@ -764,12 +879,12 @@
     return new RegExp("^" + esc + "$");
   }
 
-  // Validate stored cwd against the current tree — if it points to a path
+  // Validate stored cwd against the current tree - if it points to a path
   // that no longer exists (old structure, renamed dir, etc.), reset to HOME.
   if (!resolve(cwd).node) {
     cwd = HOME;
     store.set(CWD_KEY, HOME);
   }
 
-  window.FS = { root, getCwd, setCwd, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, find, grep, complete };
+  window.FS = { root, getCwd, setCwd, enter, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, find, grep, complete, parseFeed };
 })();

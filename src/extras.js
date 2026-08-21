@@ -9,10 +9,24 @@
   const NAME_KEY = "99jik:name";
   const store = window.PREFS.store;  // guarded localStorage, see prefs.js
 
-  window.getPromptName = () => store.get(NAME_KEY) || "anonymous";
+  // Who the shell is. There can be several terminals now, and `su` in one is not
+  // `su` in the others, so this works the way FS.enter does: whoever is running a
+  // command points it at their own name first, and reads it back afterwards.
+  //
+  // The stored name is the one a new shell starts as, and the one a returning
+  // visitor is greeted by, so `su` writes it too. What it does not do any more is
+  // reach into the terminals that are already open.
+  let current = store.get(NAME_KEY) || "anonymous";
+
+  window.getPromptName = () => current;
+  window.enterPromptName = (n) => { current = n || "anonymous"; };
+  window.loginName = () => store.get(NAME_KEY) || "anonymous";
   window.setPromptName = (n) => {
+    current = n || "anonymous";
     if (!n) store.del(NAME_KEY);
     else store.set(NAME_KEY, n);
+    // crisp.js listens, because the chat nickname is one identity for the visitor
+    // rather than one per window.
     window.dispatchEvent(new CustomEvent("promptname"));
   };
 

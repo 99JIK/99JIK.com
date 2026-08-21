@@ -148,8 +148,10 @@
           const t = String(x).trim();
           return a + (t ? t.split(/\s+/).length : 0);
         }, 0);
-        const c = s.lines.reduce((a, x) => a + String(x).length + 1, 0);
-        // -m counts characters, which differs from bytes the moment Hangul appears.
+        // -c is bytes and -m is characters. Hangul is three bytes and one character,
+        // so counting code units for -c would disagree with ls -l and du.
+        const enc = new TextEncoder();
+        const c = s.lines.reduce((a, x) => a + enc.encode(String(x)).length + 1, 0);
         const m = s.lines.reduce((a, x) => a + [...String(x)].length + 1, 0);
         totals.l += l; totals.w += w; totals.c += c; totals.m += m;
         const nums = only ? [{ l, w, c, m }[only]] : [l, w, c];

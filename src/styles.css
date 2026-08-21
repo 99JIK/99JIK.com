@@ -2,14 +2,14 @@
 .boot-overlay {
   position: fixed; inset: 0; z-index: 9999;
   background: var(--t-bg); color: var(--t-fg);
-  /* ASCII-only content — stick to true Latin monospaces, don't let CJK subs in */
+  /* ASCII-only content: stick to true Latin monospaces, don't let CJK subs in */
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
   font-size: 13px; line-height: 1.55;
   font-variant-ligatures: none;
   font-feature-settings: "tnum" 1;
   padding: 28px 32px;
   overflow: hidden;
-  transition: opacity 0.45s ease-out;
+  transition: opacity 0.26s ease-out;
   animation: boot-fade-in 0.2s ease-out;
 }
 .boot-overlay.fading { opacity: 0; pointer-events: none; }
@@ -44,22 +44,36 @@
 .js #fallback { display: none; }
 #fallback { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.7; }
 
+/* ===== Type ===== */
+/* Two faces, one job each. The terminal, the editor, the boot log and anything whose
+   meaning is in its alignment are monospace. Everything that is the system around
+   them -- title bars, the dock, menus, the GUI apps -- is the UI face, so the desktop
+   reads as one machine rather than as a terminal with windows glued to it. */
+:root {
+  --ui: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* ===== Root / layout ===== */
 html, body, #root { margin: 0; padding: 0; height: 100%; background: var(--t-bg, #0c0c0d); color: var(--t-fg, #e6e6e3); overflow: hidden; }
 * { box-sizing: border-box; }
 body {
-  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--ui);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "ss01", "cv11", "tnum";
   transition: background 0.35s ease, color 0.35s ease;
 }
 ::selection { background: var(--t-cyan); color: var(--t-bg); }
 
-/* ===== Terminal shell — viewport-locked ===== */
+/* ===== Terminal shell, viewport-locked ===== */
+/* Three rows now: title, the mpv status line when it exists, then the scrollback.
+   `auto` collapses to nothing while nothing is playing. */
 .term-shell {
-  height: 100%; display: grid; grid-template-rows: 36px minmax(0,1fr);
+  /* cmatrix lays itself over this window, so the window is its containing block. */
+  position: relative;
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr);
   background: var(--t-bg); color: var(--t-fg); cursor: text;
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mono);
   font-variant-ligatures: none;
   font-feature-settings: "tnum" 1;
   overflow: hidden;
@@ -83,11 +97,12 @@ body {
 }
 .term-easy:hover { background: var(--t-chipHover); border-color: var(--t-accent); color: var(--t-accent); }
 
-/* One scroll region for everything, prompt included. Output does not wrap: fixed
-   width art and aligned tables have to scroll sideways or they shear, which is
-   exactly what a terminal does. */
+/* One scroll region for everything, prompt included, and it only goes up and down.
+   A terminal has no horizontal scrollbar: a line longer than the window wraps onto
+   the next row. Aligned tables do shear when the window is narrow, which is what
+   happens in xterm too. */
 .term-body {
-  overflow: auto; padding: 22px 28px 18px;
+  overflow-y: auto; overflow-x: hidden; padding: 22px 28px 18px;
   font-size: 14px; line-height: 1.7;
   overscroll-behavior: contain;
 }
@@ -95,8 +110,13 @@ body {
    `margin-top: auto` was for the era when the prompt was a pinned bottom bar; with
    the prompt in the flow it just shoved everything against the bottom edge. */
 .term-body-inner { }
+/* Firefox has no ::-webkit-scrollbar, so it needs the standard properties too, or
+   the scrollback is the one part of the shell wearing the OS theme. */
+.term-body { scrollbar-width: thin; scrollbar-color: var(--t-border) transparent; }
 .term-body::-webkit-scrollbar { width: 8px; }
+.term-body::-webkit-scrollbar-track { background: transparent; }
 .term-body::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.term-body::-webkit-scrollbar-thumb:hover { background: var(--t-muted); }
 
 /* ===== Banner ===== */
 .term-banner { margin-bottom: 10px; }
@@ -113,11 +133,18 @@ body {
 }
 
 /* cmatrix overlay. Without this the canvas lands inline and shoves the page around. */
-.matrix-canvas {
-  position: fixed; inset: 0; z-index: 9999; pointer-events: none;
-  animation: matrix-fade 3.5s ease-out forwards;
-  background: #000;
+/* cmatrix runs inside the terminal it was started from. It used to be fixed to the
+   viewport with z-index 9999, which put it over the dock and every other window,
+   and it referenced a `matrix-fade` animation that was never defined. */
+.matrix { position: absolute; inset: 0; z-index: 50; animation: matrix-in 0.25s ease-out both; }
+.matrix-canvas { display: block; width: 100%; height: 100%; background: #000; }
+.matrix-hint {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  color: #2ecc40; opacity: 0.75;
 }
+@keyframes matrix-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .matrix { animation: none; } }
 
 .term-banner-head {
   display: flex; align-items: center;
@@ -193,8 +220,6 @@ body {
 /* The prompt sits inline in the scrollback, so it is a text line, not a row. */
 .t-prompt-line {
   position: relative;
-  /* The one thing that still wraps: a long command you are typing must stay on
-     screen, whereas output is allowed to run off to the right. */
   white-space: pre-wrap; overflow-wrap: break-word;
   color: var(--t-fg);
 }
@@ -224,7 +249,12 @@ body {
 /* ===== Output blocks ===== */
 /* Command output gets breathing room around it. Flat-packed lines read as a wall. */
 .t-out { margin: 3px 0 12px; }
-.t-line { color: var(--t-fg); white-space: pre; font-variant-ligatures: none; }
+/* pre-wrap keeps the padding that aligns columns; `anywhere` makes the break happen
+   at the edge of the box rather than at a space, which is where a terminal breaks. */
+.t-line {
+  color: var(--t-fg); white-space: pre-wrap; overflow-wrap: anywhere;
+  font-variant-ligatures: none;
+}
 .t-line.dim { color: var(--t-muted); }
 .t-line.warn { color: var(--t-red); }
 .t-line.strong { font-weight: 600; color: var(--t-accent); }
@@ -243,7 +273,9 @@ body {
 
 /* QR output. The SVG carries its own white field so it stays readable on any
    theme; the ASCII form (-t ASCII) uses the two classes below. */
-.qr-wrap { margin: 6px 0 10px; }
+/* Wrapping a QR destroys it, so this one block scrolls itself rather than being
+   clipped by the body. Only reachable at narrow widths with a large payload. */
+.qr-wrap { margin: 6px 0 10px; overflow-x: auto; }
 .qr-svg { display: block; }
 .qr-save { display: flex; gap: 6px; margin-top: 6px; }
 .qr-save-btn {
@@ -273,6 +305,7 @@ body {
 .t-tag-lab { color: var(--t-cyan); }
 .t-tag-focus { color: var(--t-accent); }
 .t-tag-teach { color: var(--t-yellow); }
+.t-tag-class { color: var(--t-green); }
 .t-tag-life { color: var(--t-magenta); }
 .t-tag-other { color: var(--t-muted); }
 
@@ -282,7 +315,7 @@ body {
 /* ===== Easy mode ===== */
 .easy-root {
   height: 100dvh; overflow-y: auto; background: var(--t-bg); color: var(--t-fg);
-  font-family: "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
+  font-family: var(--ui);
   font-size: 15px; letter-spacing: -0.01em;
 }
 .easy-top {
@@ -291,7 +324,7 @@ body {
   border-bottom: 1px solid var(--t-border);
   padding: 10px 24px; display: flex; align-items: center; justify-content: space-between;
 }
-.easy-crumbs { font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px; color: var(--t-muted); }
+.easy-crumbs { font-family: var(--mono); font-size: 12px; color: var(--t-muted); }
 .easy-crumb { }
 .easy-crumb-sep { margin: 0 6px; color: var(--t-faint); }
 .easy-crumb-cur { color: var(--t-fg); }
@@ -303,7 +336,7 @@ body {
 .easy-back {
   background: var(--t-chipBg); border: 1px solid var(--t-border); color: var(--t-fg);
   padding: 5px 12px; font: inherit; font-size: 12px; border-radius: 3px; cursor: pointer;
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  font-family: var(--mono);
 }
 .easy-back:hover { border-color: var(--t-accent); color: var(--t-accent); }
 
@@ -323,7 +356,7 @@ body {
 }
 .easy-cover-mono {
   position: absolute; left: 24px; bottom: 18px;
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; color: var(--t-accent);
+  font-family: var(--mono); color: var(--t-accent);
   font-size: 13px; letter-spacing: 1px;
 }
 
@@ -335,7 +368,7 @@ body {
 .easy-props { margin: 32px 0 24px; display: grid; gap: 0; border-top: 1px solid var(--t-border); border-bottom: 1px solid var(--t-border); }
 .easy-prop { display: grid; grid-template-columns: 140px 1fr; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--t-border); font-size: 14.5px; }
 .easy-prop:last-child { border-bottom: none; }
-.easy-prop-k { color: var(--t-muted); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; }
+.easy-prop-k { color: var(--t-muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; }
 .easy-prop-v { color: var(--t-fg); }
 .easy-prop-v a { color: var(--t-accent); text-decoration: none; border-bottom: 1px solid var(--t-faint); transition: border-color 0.15s; }
 .easy-prop-v a:hover { border-bottom-color: var(--t-accent); }
@@ -349,7 +382,7 @@ body {
   border: 1px solid var(--t-accent);
   padding: 10px 16px;
   border-radius: 4px;
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  font-family: var(--mono);
   font-size: 12px; font-weight: 500;
   cursor: pointer;
   box-shadow:
@@ -392,7 +425,7 @@ body {
   box-shadow:
     0 20px 60px rgba(0,0,0,0.5),
     0 0 0 3px color-mix(in oklab, var(--t-accent) 14%, transparent);
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 13px;
   overflow: hidden;
   animation: easy-chat-in 0.2s ease-out;
@@ -461,15 +494,19 @@ body {
 .easy-chat-msg.role-user .easy-chat-bubble {
   background: var(--t-accent);
   color: var(--t-bg);
-  border-bottom-right-radius: 0;
   box-shadow: 0 1px 0 color-mix(in oklab, var(--t-accent) 50%, transparent);
 }
 .easy-chat-msg.role-bot .easy-chat-bubble {
   background: var(--t-chipBg);
   color: var(--t-fg);
   border: 1px solid var(--t-border);
-  border-bottom-left-radius: 0;
 }
+/* The tail marks where a turn ends, so only the last bubble of a run has one.
+   Every bubble having one made three messages look like three conversations. */
+.easy-chat-msg.tail.role-user .easy-chat-bubble { border-bottom-right-radius: 0; }
+.easy-chat-msg.tail.role-bot .easy-chat-bubble { border-bottom-left-radius: 0; }
+/* Inside a run the bubbles close up; the gap is between turns, not between lines. */
+.easy-chat-msg.cont { margin-top: -4px; }
 .easy-chat-msg.pending .easy-chat-bubble {
   color: var(--t-muted);
   animation: chat-live-pulse 1.3s ease-in-out infinite;
@@ -552,7 +589,7 @@ body {
 
 .easy-h2 { margin: 56px 0 16px; font-size: 24px; font-weight: 700; letter-spacing: -0.6px; display: flex; align-items: baseline; gap: 10px; }
 .easy-h2::before { content: ""; display: inline-block; width: 14px; height: 2px; background: var(--t-accent); margin-right: 2px; transform: translateY(-4px); }
-.easy-h-en { color: var(--t-muted); font-weight: 400; font-size: 13px; font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; letter-spacing: 0; }
+.easy-h-en { color: var(--t-muted); font-weight: 400; font-size: 13px; font-family: var(--mono); letter-spacing: 0; }
 
 .easy-research { display: grid; gap: 8px; }
 .easy-research-item {
@@ -583,7 +620,7 @@ body {
 .easy-proj-sum { color: var(--t-muted); font-size: 13.5px; margin-top: 6px; line-height: 1.55; min-height: 44px; }
 .easy-tag {
   display: inline-block; padding: 2px 6px; background: var(--t-accent); color: var(--t-bg);
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 11px; font-weight: 600;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
   border-radius: 2px; height: fit-content; letter-spacing: 1px;
 }
 .easy-r-title { font-weight: 600; margin-bottom: 3px; }
@@ -603,7 +640,7 @@ body {
   transform: translateY(-2px); border-color: var(--t-accent);
   box-shadow: 0 6px 20px rgba(0,0,0,0.18);
 }
-.easy-proj-h { display: flex; justify-content: space-between; font-size: 11px; font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; }
+.easy-proj-h { display: flex; justify-content: space-between; font-size: 11px; font-family: var(--mono); }
 .easy-proj-slug { color: var(--t-cyan); }
 .easy-proj-year { color: var(--t-muted); }
 .easy-proj-title { font-weight: 600; font-size: 16px; margin-top: 6px; }
@@ -612,12 +649,12 @@ body {
 .easy-pill {
   display: inline-block; padding: 1px 7px; background: var(--t-chipBg);
   border: 1px solid var(--t-border); color: var(--t-muted);
-  border-radius: 2px; font-size: 10px; font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  border-radius: 2px; font-size: 10px; font-family: var(--mono);
   letter-spacing: 0.3px;
 }
 .easy-proj-feat {
   position: absolute; top: 10px; right: 10px; font-size: 10px; color: var(--t-yellow);
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  font-family: var(--mono);
 }
 
 .easy-pubs { display: grid; gap: 4px; }
@@ -626,24 +663,24 @@ body {
   padding: 10px 0; border-bottom: 1px dashed var(--t-border);
   font-size: 14px; align-items: baseline;
 }
-.easy-pub-y { font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; color: var(--t-muted); font-size: 12px; }
-.easy-pub-v { color: var(--t-cyan); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px; }
+.easy-pub-y { font-family: var(--mono); color: var(--t-muted); font-size: 12px; }
+.easy-pub-v { color: var(--t-cyan); font-family: var(--mono); font-size: 12px; }
 .easy-pub-r { color: var(--t-muted); font-size: 12px; }
 
 .easy-exp { display: grid; gap: 10px; }
 .easy-exp-row { display: grid; grid-template-columns: 130px 1fr; gap: 14px; padding: 8px 0; border-bottom: 1px dashed var(--t-border); }
-.easy-exp-when { color: var(--t-muted); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px; }
+.easy-exp-when { color: var(--t-muted); font-family: var(--mono); font-size: 12px; }
 .easy-exp-what { font-weight: 600; }
 
 .easy-skills { display: grid; gap: 14px; }
 .easy-skill-row { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; }
-.easy-skill-label { color: var(--t-muted); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.easy-skill-label { color: var(--t-muted); font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 .easy-skill-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .easy-foot {
   margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--t-border);
   display: flex; justify-content: space-between; font-size: 12px; color: var(--t-muted);
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  font-family: var(--mono);
 }
 .easy-foot a { color: var(--t-accent); text-decoration: none; }
 
@@ -651,21 +688,21 @@ body {
 .easy-cal { display: grid; gap: 12px; margin-top: 4px; border: 1px solid var(--t-border); border-radius: 4px; padding: 16px 20px; background: var(--t-panel); }
 .easy-cal-day { display: grid; grid-template-columns: 90px 1fr; gap: 18px; padding: 8px 0; border-bottom: 1px dashed var(--t-border); }
 .easy-cal-day:last-child { border-bottom: none; padding-bottom: 0; }
-.easy-cal-daylbl { color: var(--t-muted); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; padding-top: 3px; }
+.easy-cal-daylbl { color: var(--t-muted); font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; padding-top: 3px; }
 .easy-cal-events { display: grid; gap: 6px; }
 .easy-cal-ev { display: grid; grid-template-columns: 54px 10px 1fr auto; gap: 10px; align-items: baseline; font-size: 14px; }
-.easy-cal-time { font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; color: var(--t-cyan); font-size: 13px; font-variant-numeric: tabular-nums; }
+.easy-cal-time { font-family: var(--mono); color: var(--t-cyan); font-size: 13px; font-variant-numeric: tabular-nums; }
 .easy-cal-dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
 .easy-cal-title { color: var(--t-fg); }
 .easy-cal-loc { color: var(--t-muted); font-size: 12px; }
-.easy-cal-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--t-border); font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 11px; color: var(--t-muted); }
+.easy-cal-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--t-border); font-family: var(--mono); font-size: 11px; color: var(--t-muted); }
 .easy-cal-empty { padding: 24px; text-align: center; border: 1px dashed var(--t-border); border-radius: 4px; background: var(--t-panel); }
 
 /* ===== Tweaks panel ===== */
 .tweaks {
   position: fixed; right: 16px; bottom: 16px; z-index: 500;
   background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 4px;
-  padding: 12px 14px; width: 260px; font-family: "JetBrains Mono", "Nanum Gothic Coding", monospace; font-size: 12px;
+  padding: 12px 14px; width: 260px; font-family: var(--mono); font-size: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
 }
 .tweaks h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--t-muted); }
@@ -733,7 +770,10 @@ body {
   padding: 8px 28px 6px; font-size: 14px; line-height: 1.7;
   overflow: hidden;
 }
+/* vi counts screen rows itself, so a wrapped line would throw off the tilde filler
+   and the position readout. This is `set nowrap`: long lines are cut at the edge. */
 .vi-buf { overflow: hidden; }
+.vi-buf .t-line { white-space: pre; overflow: hidden; }
 .vi-tilde { color: var(--t-muted); }
 .vi-cursor { background: var(--t-fg); color: var(--t-bg); }
 .vi-cursor.ins { background: var(--t-accent); }
@@ -778,7 +818,7 @@ body {
 }
 .wall-clock {
   position: absolute; left: 6vw; bottom: 12vh;
-  font-family: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, monospace;
+  font-family: var(--mono);
   color: var(--t-fg);
 }
 .wall-time { font-size: clamp(48px, 9vw, 108px); line-height: 1; font-weight: 300; letter-spacing: -2px; }
@@ -786,7 +826,7 @@ body {
 .wall-next { margin-top: 14px; font-size: 13px; color: var(--t-cyan); }
 .wall-brand {
   position: absolute; right: 18px; bottom: 12px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 11px; color: var(--t-muted); letter-spacing: 2px;
 }
 
@@ -801,7 +841,7 @@ body {
 .desk-icon-glyph {
   display: grid; place-items: center; width: 42px; height: 42px; border-radius: 8px;
   background: var(--t-panel); border: 1px solid var(--t-border);
-  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; color: var(--t-accent);
+  font-family: var(--mono); font-size: 14px; color: var(--t-accent);
 }
 .desk-icon-label { text-shadow: 0 1px 3px var(--t-bg); }
 
@@ -814,16 +854,40 @@ body {
 
 /* ===== Window ===== */
 .win { position: absolute; overflow: hidden; }
-.win.maxed { inset: 0; }
+/* Minimised, not unmounted. The window is moved off-screen rather than hidden:
+   display:none detaches the frame and stops whatever it was playing, and even
+   visibility:hidden is more than this needs. `inert` takes it out of the tab order
+   and the accessibility tree, which is the part that actually matters. */
+.win.stowed { pointer-events: none; opacity: 0; }
+/* The dock is permanent, so maximised means the screen minus the dock. This has to
+   agree with WM.DOCK_H, which is what the snap arithmetic uses. */
+.win.maxed { top: 0; left: 0; right: 0; bottom: 44px; }
 .win.framed {
   border: 1px solid var(--t-border); border-radius: 8px;
   box-shadow: 0 24px 70px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.3);
 }
-.win-resize {
-  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px;
-  cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 50%, var(--t-border) 50%);
-}
+/* Eight grips, one per edge and corner. They sit just outside the frame as well as
+   just inside it, because a 3px border is not a pointer target: EDGE is how far the
+   grab area reaches, CORNER how far the corners claim along each side. */
+.win-edge { position: absolute; --edge: 6px; --corner: 14px; }
+.win-n, .win-s { left: var(--corner); right: var(--corner); height: calc(var(--edge) * 2); cursor: ns-resize; }
+.win-e, .win-w { top: var(--corner); bottom: var(--corner); width: calc(var(--edge) * 2); cursor: ew-resize; }
+.win-n { top: calc(var(--edge) * -1); }
+.win-s { bottom: calc(var(--edge) * -1); }
+.win-w { left: calc(var(--edge) * -1); }
+.win-e { right: calc(var(--edge) * -1); }
+.win-ne, .win-nw, .win-se, .win-sw { width: var(--corner); height: var(--corner); }
+.win-nw { top: calc(var(--edge) * -1); left: calc(var(--edge) * -1); cursor: nwse-resize; }
+.win-ne { top: calc(var(--edge) * -1); right: calc(var(--edge) * -1); cursor: nesw-resize; }
+.win-sw { bottom: calc(var(--edge) * -1); left: calc(var(--edge) * -1); cursor: nesw-resize; }
+.win-se { bottom: calc(var(--edge) * -1); right: calc(var(--edge) * -1); cursor: nwse-resize; }
+/* The corner keeps its visible grip; the rest are felt, not seen. */
+.win-se { background: linear-gradient(135deg, transparent 45%, var(--t-border) 45%); }
+
+/* The grips reach past the frame, so the frame must not clip them. The rounded
+   corners are kept by clipping the content instead. */
+.win.framed { overflow: visible; }
+.win.framed > :first-child { height: 100%; overflow: hidden; border-radius: inherit; }
 .term-title.live { cursor: default; }
 .win.framed .term-title.live { cursor: move; }
 
@@ -831,17 +895,735 @@ body {
 button.term-dot { border: none; padding: 0; cursor: pointer; }
 button.term-dot:hover { filter: brightness(1.25); }
 
+/* The dock is always there, which is why WM.DOCK_H exists: a maximised window stops
+   above it rather than hiding behind it. */
 .dock {
-  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
-  display: flex; gap: 8px; padding: 6px;
-  background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 10px;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 44px; z-index: 40;
+  display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  background: var(--t-panel); border-top: 1px solid var(--t-border);
+  font-size: 12px; color: var(--t-muted);
 }
+.dock-apps { display: flex; gap: 4px; }
+.dock-ws { display: flex; gap: 3px; margin-left: auto; }
+.dock-right { display: flex; align-items: center; gap: 8px; position: relative; }
 .dock-item {
-  background: transparent; border: 1px solid var(--t-border); border-radius: 6px;
-  color: var(--t-fg); font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer;
+  font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+  color: var(--t-muted); background: transparent;
+  border: 1px solid transparent; border-radius: 6px;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  position: relative;
 }
-.dock-item:hover { border-color: var(--t-accent); color: var(--t-accent); }
+.dock-item:hover { color: var(--t-fg); background: var(--t-chipHover); }
+.dock-item.on { color: var(--t-accent); background: var(--t-chipHover); }
+/* A running app gets an underline the way every dock does. */
+.dock-item.running::after {
+  content: ""; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+  width: 12px; height: 2px; border-radius: 1px; background: var(--t-muted);
+}
+.dock-item.on::after { background: var(--t-accent); }
+
+.dock-wsx {
+  font: inherit; font-size: 10px; cursor: pointer;
+  color: var(--t-muted); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px;
+  width: 18px; height: 18px; display: grid; place-items: center;
+  opacity: 0.55;
+}
+.dock-wsx.used { opacity: 1; }
+.dock-wsx.on { color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent); opacity: 1; }
+.dock-plain {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 2px 6px;
+  color: var(--t-muted); background: transparent; border: 0;
+}
+.dock-plain:hover { color: var(--t-accent); }
+.dock-clock { font-variant-numeric: tabular-nums; color: var(--t-fg); }
+
 
 @media (max-width: 860px) {
   .desk-icons, .wall-clock, .wall-mark { display: none; }
 }
+
+/* mpv. The block that `mpv` prints is only text; the player, the seek bar and the
+   track list all live in the strip below, which is part of the shell rather than the
+   scrollback. That is what lets `clear` wipe the output without stopping the music. */
+.mpv { margin: 0.25rem 0 0.6rem; }
+/* One line each, always. The scrollback has a ResizeObserver that pins it to the
+   bottom whenever its content changes height, so a track whose title wraps to two
+   lines and one that does not would make the view jump on every skip. */
+.mpv .t-line { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── the status strip ─────────────────────────────────────────────────────── */
+.mpv-strip {
+  position: relative;
+  background: var(--t-titlebar); border-bottom: 1px solid var(--t-border);
+  font-size: 12px; color: var(--t-muted);
+}
+/* Zero height rather than display:none: the row has to stay in the grid, and the
+   player node inside it must never be unmounted or the iframe reloads. */
+.mpv-strip.off { border: 0; height: 0; overflow: hidden; }
+.mpv-strip-row {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 4px 12px; min-width: 0;
+}
+.mpv-strip.off .mpv-strip-row { padding: 0; }
+.mpv-strip-tag { color: var(--t-accent); font-weight: 600; flex: none; }
+.mpv-strip-clock { font-variant-numeric: tabular-nums; flex: none; }
+.mpv-strip-pos {
+  font: inherit; font-variant-numeric: tabular-nums; flex: none;
+  background: transparent; border: 0; padding: 0; cursor: pointer; color: var(--t-muted);
+}
+.mpv-strip-pos:hover { color: var(--t-accent); }
+.mpv-strip-title {
+  flex: 1; min-width: 0; color: var(--t-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* The seek bar. A thin track with a hit area the full height of the row. */
+.mpv-seek { position: relative; flex: 1 1 8rem; min-width: 4rem; height: 14px; cursor: pointer; outline: none; }
+.mpv-seek::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 3px;
+  background: var(--t-border);
+}
+.mpv-seek-fill { position: absolute; left: 0; top: 6px; height: 3px; background: var(--t-accent); }
+.mpv-seek-head {
+  position: absolute; top: 3px; width: 3px; height: 9px;
+  background: var(--t-accent); transform: translateX(-2px);
+}
+.mpv-seek:hover .mpv-seek-head, .mpv-seek:focus-visible .mpv-seek-head { top: 1px; height: 13px; }
+.mpv-seek:focus-visible { box-shadow: 0 0 0 1px var(--t-accent); }
+
+.mpv-bar { display: flex; align-items: center; gap: 0.3rem; flex: none; }
+.mpv-bar button {
+  font: inherit; font-size: 11px; cursor: pointer; min-width: 2.1em;
+  color: var(--t-fg); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 2px;
+  padding: 0 0.35rem; line-height: 1.5;
+}
+.mpv-bar button:hover { border-color: var(--t-accent); color: var(--t-accent); }
+.mpv-bar button.on { border-color: var(--t-accent); color: var(--t-accent); }
+/* The unmute button is the one control the reader has to notice. */
+.mpv-bar button.hot { color: var(--t-yellow); border-color: var(--t-yellow); }
+
+/* The track list drops over the scrollback instead of pushing it down, so opening
+   it does not move the text you were reading. */
+.mpv-panel {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+  background: var(--t-titlebar);
+  border-bottom: 1px solid var(--t-border);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+}
+.mpv-list { list-style: none; margin: 0; padding: 4px 0; max-height: 16rem; overflow-y: auto; font-size: 12px; }
+.mpv-list li { margin: 0; }
+.mpv-list button {
+  display: block; width: 100%; text-align: left;
+  font: inherit; color: var(--t-muted); background: transparent;
+  border: 0; padding: 1px 12px; cursor: pointer;
+  white-space: pre; overflow: hidden; text-overflow: ellipsis;
+}
+.mpv-list button:hover { color: var(--t-fg); background: var(--t-chipHover); }
+.mpv-list li.on button { color: var(--t-accent); }
+.mpv-n { opacity: 0.55; }
+.mpv-t { padding-left: 0.6rem; }
+
+/* The list had the OS default scrollbar, which is the one piece of chrome that
+   ignored the theme. Same treatment as .term-body, one step narrower. */
+.mpv-list { scrollbar-width: thin; scrollbar-color: var(--t-border) transparent; }
+.mpv-list::-webkit-scrollbar { width: 8px; }
+.mpv-list::-webkit-scrollbar-track { background: transparent; }
+.mpv-list::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.mpv-list::-webkit-scrollbar-thumb:hover { background: var(--t-muted); }
+
+/* ===== Browser ===== */
+/* A real browser for the part of the web that permits framing, which is a small
+   part. The chrome is the terminal's, one shade lighter. */
+.brw, .cw {
+  height: 100%; display: grid; background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  font-variant-ligatures: none;
+  overflow: hidden;
+}
+.brw { grid-template-rows: 36px auto auto minmax(0,1fr) auto; }
+.cw  { grid-template-rows: 36px minmax(0,1fr) auto; }
+
+.brw-title {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--t-titlebar); border-bottom: 1px solid var(--t-border);
+  padding: 0 12px; font-size: 12px; color: var(--t-muted);
+}
+.win.framed .brw-title { cursor: move; }
+
+.brw-chrome {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-bottom: 1px solid var(--t-border);
+}
+.brw-nav { display: flex; gap: 4px; }
+.brw-nav button, .brw-omni button, .brw-marks button, .cw-form button {
+  font: inherit; font-size: 11px; cursor: pointer;
+  color: var(--t-fg); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px;
+  padding: 2px 8px;
+}
+.brw-nav button:hover:not(:disabled), .brw-omni button:hover,
+.brw-marks button:hover, .cw-form button:hover {
+  border-color: var(--t-accent); color: var(--t-accent);
+}
+.brw-nav button:disabled { opacity: 0.35; cursor: default; }
+.brw-omni { flex: 1; display: flex; gap: 5px; min-width: 0; }
+.brw-omni input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px;
+  color: var(--t-fg); background: var(--t-titlebar);
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 3px 8px;
+}
+.brw-omni input:focus { outline: none; border-color: var(--t-accent); }
+.brw-out { color: var(--t-muted); text-decoration: none; padding: 0 4px; font-size: 14px; }
+.brw-out:hover { color: var(--t-accent); }
+
+.brw-marks {
+  display: flex; gap: 5px; flex-wrap: wrap;
+  padding: 4px 10px; border-bottom: 1px solid var(--t-border);
+  background: var(--t-titlebar);
+}
+.brw-marks button { border-color: transparent; color: var(--t-muted); }
+/* Divides my own links from the reference ones. */
+.brw-mark { display: inline-flex; }
+.brw-mark.grouped { border-left: 1px solid var(--t-border); margin-left: 4px; padding-left: 7px; }
+
+.brw-view { position: relative; background: #fff; min-height: 0; }
+.brw-view iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* Shown instead of a blank frame when the response headers already say no. */
+.brw-stop {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center;
+  background: var(--t-bg); color: var(--t-muted);
+}
+.brw-stop-code { color: var(--t-red); font-size: 12px; letter-spacing: 0.04em; }
+.brw-stop p { margin: 0; max-width: 34rem; font-size: 13px; line-height: 1.6; }
+.brw-stop a, .cw-file { color: var(--t-accent); }
+
+.brw-status {
+  padding: 3px 10px; font-size: 11px; color: var(--t-muted);
+  border-top: 1px solid var(--t-border); background: var(--t-titlebar);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brw-note strong { color: var(--t-yellow); font-weight: 600; }
+
+/* ===== Chat window ===== */
+.cw-live { color: var(--t-green); font-size: 11px; }
+.cw-body {
+  overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  font-size: 13px;
+  scrollbar-width: thin; scrollbar-color: var(--t-border) transparent;
+}
+.cw-body::-webkit-scrollbar { width: 8px; }
+.cw-body::-webkit-scrollbar-track { background: transparent; }
+.cw-body::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.cw-empty { color: var(--t-muted); line-height: 1.6; }
+.cw-msg { display: flex; flex-direction: column; gap: 2px; }
+.cw-who { font-size: 10px; color: var(--t-muted); }
+.cw-msg.role-user .cw-who { color: var(--t-yellow); }
+.cw-msg.role-bot .cw-who { color: var(--t-green); }
+.cw-bubble { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.cw-bubble .chat-img { max-width: 100%; border: 1px solid var(--t-border); }
+.cw-bubble .chat-audio { width: 100%; }
+.cw-dots { color: var(--t-muted); animation: blink 1s infinite; }
+.cw-form { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--t-border); }
+.cw-form input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px;
+  color: var(--t-fg); background: var(--t-titlebar);
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 5px 9px;
+}
+.cw-form input:focus { outline: none; border-color: var(--t-accent); }
+
+/* ===== Music ===== */
+/* The picture, parked on the desktop rather than in any window. It is never
+   conditionally rendered and never re-parented: either would reload the iframe and
+   stop the sound. It cannot be hidden outright, because a hidden YouTube player is
+   against their terms and browsers will not start one. */
+.mpv-host {
+  /* Clear of the dock, which owns the bottom 44px. */
+  position: absolute; right: 16px; bottom: 56px; z-index: 5;
+  border: 1px solid var(--t-border); background: #000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  width: 160px; height: 90px;
+}
+/* Off-screen, not hidden and not shrunk. Stacking it under an opaque layer would
+   look the same, but off-screen is the version that does not depend on what happens
+   to be painted on top; the frame stays rendered either way, which is the part that
+   keeps the sound going. Zero size would leave the player nothing to decode into. */
+.mpv-host.off {
+  right: auto; bottom: auto; left: -99999px; top: 0;
+  border-width: 0; box-shadow: none; pointer-events: none;
+}
+.mpv-host-frame { width: 100%; height: 100%; }
+.mpv-host-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* The player window: the same session the terminal drives, with the whole playlist
+   open instead of folded into a dropdown. */
+.mus {
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr);
+  background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  font-variant-ligatures: none; overflow: hidden;
+}
+.mus-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 28px; color: var(--t-muted); font-size: 13px;
+}
+.mus-empty.warn { color: var(--t-red); }
+.mus-start {
+  font: inherit; font-size: 12px; cursor: pointer;
+  color: var(--t-accent); background: transparent;
+  border: 1px solid var(--t-accent); border-radius: 3px; padding: 4px 12px;
+}
+.mus-now { padding: 12px 14px 10px; border-bottom: 1px solid var(--t-border); }
+.mus-title {
+  font-size: 14px; color: var(--t-fg); margin-bottom: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mus-times {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 11px; color: var(--t-muted); font-variant-numeric: tabular-nums;
+}
+.mus-now .mpv-bar { margin-top: 10px; }
+.mus-list { min-height: 0; overflow: hidden; }
+.mus-list .mpv-list { max-height: none; height: 100%; padding: 6px 0; }
+
+/* ===== Desktop: waking up, and windows arriving and leaving ===== */
+/* The boot log hands over to a machine that is already on but has not drawn itself
+   yet: wallpaper first, then the icons, then the session's windows are mapped. Only
+   on the run that actually watched the boot, never on a re-render. */
+@keyframes dsk-wake { from { opacity: 0; transform: scale(1.015); } to { opacity: 1; transform: none; } }
+@keyframes dsk-in   { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes win-map  { from { opacity: 0; transform: scale(0.965) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes win-unmap { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.965) translateY(6px); } }
+
+.desktop.cold .wall       { animation: dsk-wake 0.3s ease-out both; }
+.desktop.cold .desk-icons { animation: dsk-in 0.22s ease-out 0.1s both; }
+.desktop.cold .desk-lang  { animation: dsk-in 0.22s ease-out 0.15s both; }
+.desktop.cold .win        { animation: win-map 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) 0.2s both; }
+
+/* After the first paint, windows animate on their own schedule. transform-origin
+   sits low so a window grows out of roughly where the dock is. */
+.win.animate { animation: win-map 0.14s cubic-bezier(0.2, 0.9, 0.3, 1) both; transform-origin: 50% 90%; }
+.win.animate.closing { animation: win-unmap 0.12s ease-in both; pointer-events: none; }
+/* Minimising and restoring are the same two animations, so the dock trip reads as
+   the window going somewhere rather than blinking out. */
+.win.animate.stowed { animation: none; }
+
+/* The cold-start choreography is the one thing here that is purely motion. */
+@media (prefers-reduced-motion: reduce) {
+  .desktop.cold .wall,
+  .desktop.cold .desk-icons,
+  .desktop.cold .desk-lang,
+  .desktop.cold .win,
+  .win.animate,
+  .win.animate.closing { animation: none; }
+}
+
+/* Language switch, for the desktop itself rather than for whatever is on it. */
+.desk-lang {
+  position: absolute; top: 22px; right: 22px; z-index: 6;
+  background: color-mix(in oklab, var(--t-bg) 70%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+/* ===== PDF window ===== */
+.pdfv {
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr);
+  background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  overflow: hidden;
+}
+.pdfv-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 10px; font-size: 11px; color: var(--t-muted);
+  border-bottom: 1px solid var(--t-border); background: var(--t-titlebar);
+}
+.pdfv-size { margin-left: auto; font-variant-numeric: tabular-nums; }
+.pdfv-act { color: var(--t-muted); text-decoration: none; }
+.pdfv-act:hover { color: var(--t-accent); }
+.pdfv-view { min-height: 0; background: #525659; }
+.pdfv-view iframe { display: block; width: 100%; height: 100%; border: 0; }
+.pdfv-msg {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: var(--t-muted); font-size: 13px; background: var(--t-bg);
+}
+.pdfv-msg.warn { color: var(--t-red); }
+.pdfv-msg a { color: var(--t-accent); }
+
+
+/* ===== Desktop: focus, snapping, menu, lock, toasts ===== */
+/* Which window has focus has to be visible without reading the stacking order, so
+   the unfocused ones step back rather than the focused one shouting. */
+.win.framed { opacity: 0.94; }
+.win.framed.on { opacity: 1; box-shadow: 0 28px 80px rgba(0,0,0,0.55), 0 0 0 1px var(--t-accent); }
+.win.framed:not(.on) .brw-title,
+.win.framed:not(.on) .term-title { filter: saturate(0.5); }
+
+/* Where the window will land if the drag ends here. */
+.snap-preview {
+  position: absolute; z-index: 30; pointer-events: none;
+  border: 1px solid var(--t-accent);
+  background: color-mix(in oklab, var(--t-accent) 14%, transparent);
+  border-radius: 8px;
+}
+
+.desk-restored {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%); z-index: 45;
+  padding: 4px 12px; font-size: 12px; color: var(--t-muted);
+  background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 999px;
+  animation: dsk-in 0.3s ease-out both;
+}
+
+/* the desktop's own menu */
+.desk-menu {
+  position: absolute; z-index: 60; min-width: 200px; padding: 4px;
+  background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.5);
+  font-size: 12px;
+}
+.desk-menu button {
+  display: flex; width: 100%; align-items: center; gap: 12px;
+  font: inherit; text-align: left; cursor: pointer;
+  color: var(--t-fg); background: transparent; border: 0;
+  padding: 5px 9px; border-radius: 5px;
+}
+.desk-menu button:hover { background: var(--t-chipHover); }
+.desk-menu button.on { color: var(--t-accent); }
+.desk-menu-key { margin-left: auto; color: var(--t-muted); font-size: 10px; }
+.desk-menu-sep { height: 1px; margin: 4px 6px; background: var(--t-border); }
+.desk-menu-head { padding: 5px 9px 2px; color: var(--t-muted); font-size: 10px; letter-spacing: 0.06em; }
+
+/* lock */
+.lock {
+  position: absolute; inset: 0; z-index: 80;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; background: color-mix(in oklab, var(--t-bg) 92%, #000);
+  backdrop-filter: blur(6px);
+  animation: dsk-wake 0.25s ease-out both;
+}
+.lock-time { font-size: 68px; line-height: 1; color: var(--t-fg); font-variant-numeric: tabular-nums; }
+.lock-date { font-size: 14px; color: var(--t-muted); }
+.lock-hint { margin-top: 26px; font-size: 12px; color: var(--t-muted); animation: blink 2.4s infinite; }
+
+/* toasts */
+.toasts {
+  position: absolute; right: 0; bottom: 38px; z-index: 70;
+  display: flex; flex-direction: column-reverse; gap: 6px; width: 280px;
+}
+.toast {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  font: inherit; font-size: 12px; cursor: pointer;
+  color: var(--t-fg); background: var(--t-panel);
+  border: 1px solid var(--t-border); border-left: 2px solid var(--t-accent);
+  border-radius: 6px; padding: 7px 10px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+  animation: dsk-in 0.2s ease-out both;
+}
+.toast:hover { border-color: var(--t-accent); }
+.toast-app { font-size: 10px; color: var(--t-accent); }
+.toast-body { color: var(--t-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Files ===== */
+.fm {
+  /* the menu is positioned inside this window, not against the screen */
+  position: relative;
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr) auto;
+  background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  font-size: 12px; overflow: hidden;
+}
+.fm-bar {
+  display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+  border-bottom: 1px solid var(--t-border); background: var(--t-titlebar);
+}
+.fm-btn {
+  font: inherit; cursor: pointer; color: var(--t-fg); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 1px 7px;
+}
+.fm-btn:disabled { opacity: 0.35; cursor: default; }
+.fm-crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
+.fm-crumbs button {
+  font: inherit; cursor: pointer; color: var(--t-muted); background: transparent;
+  border: 0; padding: 1px 4px; border-radius: 3px; white-space: nowrap;
+}
+.fm-crumbs button:hover { color: var(--t-accent); background: var(--t-chipHover); }
+/* Reads as the flag it is rather than as a checkbox someone forgot to style. */
+.fm-dot { color: var(--t-muted); font-variant-ligatures: none; }
+.fm-dot.on { color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent); }
+
+.fm-body { display: flex; min-height: 0; }
+.fm-list { flex: 1; min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--t-border) transparent; }
+.fm-list::-webkit-scrollbar { width: 8px; }
+.fm-list::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.fm-head, .fm-row {
+  display: grid; grid-template-columns: 1fr 5rem 9rem; gap: 8px;
+  padding: 2px 10px; align-items: center;
+}
+.fm-head { color: var(--t-muted); border-bottom: 1px solid var(--t-border); position: sticky; top: 0; background: var(--t-bg); }
+.fm-row { cursor: default; color: var(--t-fg); outline: none; }
+.fm-row:hover { background: var(--t-chipHover); }
+.fm-row.on { background: var(--t-chipHover); color: var(--t-accent); }
+.fm-row:focus-visible { box-shadow: inset 0 0 0 1px var(--t-accent); }
+.fm-row.k-dir .fm-name { color: var(--t-accent); }
+.fm-row.k-link .fm-name { color: var(--t-magenta); }
+.fm-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fm-glyph { display: inline-block; width: 1.2em; color: var(--t-muted); }
+.fm-size, .fm-date { color: var(--t-muted); font-variant-numeric: tabular-nums; }
+.fm-none { padding: 12px 10px; color: var(--t-muted); }
+
+.fm-view { width: 46%; min-width: 0; border-left: 1px solid var(--t-border); display: flex; flex-direction: column; }
+.fm-view-head {
+  display: flex; align-items: center; gap: 8px; padding: 3px 8px;
+  border-bottom: 1px solid var(--t-border); color: var(--t-muted); background: var(--t-titlebar);
+}
+.fm-view-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-view-head button { font: inherit; cursor: pointer; color: var(--t-muted); background: transparent; border: 0; }
+pre.fm-view-body { white-space: pre-wrap; }
+.fm-view-body {
+  flex: 1; margin: 0; padding: 8px; overflow: auto;
+  overflow-wrap: anywhere; color: var(--t-fg);
+  scrollbar-width: thin; scrollbar-color: var(--t-border) transparent;
+}
+.fm-view-body::-webkit-scrollbar { width: 8px; }
+.fm-view-body::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.fm-status { padding: 3px 10px; color: var(--t-muted); border-top: 1px solid var(--t-border); background: var(--t-titlebar); }
+
+/* ===== Settings ===== */
+.set {
+  height: 100%; display: grid; grid-template-rows: 36px minmax(0,1fr);
+  background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  font-size: 12px; overflow: hidden;
+}
+.set-body {
+  overflow-y: auto; padding: 14px 16px 20px;
+  scrollbar-width: thin; scrollbar-color: var(--t-border) transparent;
+}
+.set-body::-webkit-scrollbar { width: 8px; }
+.set-body::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.set-body h3 {
+  margin: 18px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--t-accent);
+}
+.set-body h3:first-child { margin-top: 0; }
+.set-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.set-row > span:first-child { min-width: 5.5rem; color: var(--t-muted); }
+.set-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.set-chips button {
+  font: inherit; cursor: pointer; color: var(--t-muted); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 2px 9px;
+}
+.set-chips button:hover { color: var(--t-fg); }
+.set-chips button.on { color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent); }
+.set-note { color: var(--t-muted); line-height: 1.6; margin: 6px 0 0; }
+.set-keys { margin: 6px 0 12px; }
+.set-keys-head { color: var(--t-muted); margin-bottom: 4px; }
+.set-key { display: flex; align-items: baseline; gap: 10px; padding: 1px 0; }
+.set-key kbd {
+  font: inherit; font-size: 11px; color: var(--t-fg);
+  background: var(--t-titlebar); border: 1px solid var(--t-border);
+  border-radius: 3px; padding: 0 5px; min-width: 9.5rem; display: inline-block;
+}
+.set-key span { color: var(--t-muted); }
+.set-danger {
+  font: inherit; cursor: pointer; color: var(--t-red); background: transparent;
+  border: 1px solid var(--t-red); border-radius: 3px; padding: 3px 12px;
+}
+.set-danger:hover { color: var(--t-bg); background: var(--t-red); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lock, .toast, .desk-restored, .lock-hint { animation: none; }
+}
+
+/* The file manager's menu reuses the desktop menu's look but is positioned inside
+   the window, so it clips with the window rather than floating over the screen. */
+.fm-menu { position: absolute; min-width: 170px; }
+/* Writes are offered and then refused, so they are marked as the ones that will. */
+.fm-menu button.ro { color: var(--t-muted); }
+.fm-menu button.ro:hover { color: var(--t-red); }
+.fm-status.bad { color: var(--t-red); }
+.fm-props { margin: 0; padding: 8px 10px; overflow: auto; }
+.fm-props > div { display: grid; grid-template-columns: 6rem 1fr; gap: 8px; padding: 2px 0; }
+.fm-props dt { color: var(--t-muted); }
+.fm-props dd { margin: 0; color: var(--t-fg); overflow-wrap: anywhere; }
+
+
+/* ===== Markdown ===== */
+/* Rendered notes stay in the monospace face: this is still a file preview inside a
+   terminal-shaped machine, not a document viewer. Only the structure comes back. */
+.md { line-height: 1.65; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin: 1.1em 0 0.45em; font-weight: 600; color: var(--t-accent); line-height: 1.35;
+}
+.md h1 { font-size: 1.35em; }
+.md h2 { font-size: 1.18em; }
+.md h3 { font-size: 1.06em; }
+.md h4, .md h5, .md h6 { font-size: 1em; color: var(--t-fg); }
+.md p { margin: 0.55em 0; }
+.md ul, .md ol { margin: 0.5em 0; padding-left: 1.5em; }
+.md li { margin: 0.15em 0; }
+.md li::marker { color: var(--t-muted); }
+.md a { color: var(--t-cyan); }
+.md strong { color: var(--t-fg); font-weight: 600; }
+.md em { color: var(--t-fg); font-style: italic; }
+.md code {
+  color: var(--t-yellow); background: var(--t-titlebar);
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 0 3px;
+}
+.md-code {
+  margin: 0.6em 0; padding: 8px 10px; overflow-x: auto;
+  background: var(--t-titlebar); border: 1px solid var(--t-border); border-radius: 4px;
+}
+.md-code code { border: 0; background: none; padding: 0; color: var(--t-fg); }
+.md blockquote {
+  margin: 0.6em 0; padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--t-border); color: var(--t-muted);
+}
+.md hr { border: 0; border-top: 1px solid var(--t-border); margin: 1em 0; }
+
+/* The rendered/source toggle in the preview header. */
+.fm-view-head button.on { color: var(--t-accent); }
+
+/* Dock extras: weather, the language switch and the way out to Easy Mode. */
+.dock-weather { color: var(--t-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dock-lang { transform: scale(0.92); }
+.dock-easy {
+  font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+  color: var(--t-muted); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 2px 8px;
+}
+.dock-easy:hover { border-color: var(--t-accent); color: var(--t-accent); }
+
+/* The dock is now the only place language and Easy Mode appear, so they stay at
+   every width and the dock gives up space elsewhere instead: the weather first,
+   then the launcher row tightens. */
+@media (max-width: 1080px) {
+  .dock-weather { display: none; }
+}
+@media (max-width: 860px) {
+  .dock { gap: 6px; padding: 0 8px; }
+  .dock-item { width: 26px; height: 26px; font-size: 13px; }
+  .dock-easy { padding: 2px 6px; }
+  .dock-clock { display: none; }
+}
+
+/* Message runs. A second line from the same sender drops the name and tucks up
+   under the first, so a run reads as one turn instead of several. */
+.chat-msg.cont { margin-top: -2px; }
+.cw-body .cw-msg.cont { margin-top: -8px; }
+
+/* ===== Viewer ===== */
+/* The file manager's preview pane, standing on its own. */
+.vw {
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr);
+  background: var(--t-bg); color: var(--t-fg);
+  font-family: var(--ui);
+  font-size: 13px; overflow: hidden;
+}
+.vw-bar {
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 11px;
+  color: var(--t-muted); background: var(--t-titlebar); border-bottom: 1px solid var(--t-border);
+}
+.vw-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vw-bar button {
+  font: inherit; cursor: pointer; color: var(--t-muted); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 1px 8px;
+}
+.vw-bar button:hover { color: var(--t-accent); border-color: var(--t-accent); }
+.vw-bar button.on { color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent); }
+.vw-body {
+  overflow: auto; padding: 16px 20px 24px;
+  scrollbar-width: thin; scrollbar-color: var(--t-border) transparent;
+}
+.vw-body::-webkit-scrollbar { width: 8px; }
+.vw-body::-webkit-scrollbar-thumb { background: var(--t-border); border-radius: 4px; }
+.vw-body .md { max-width: 46rem; }
+.vw-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vw-msg { color: var(--t-muted); padding: 8px 0; }
+.vw-msg.warn { color: var(--t-red); }
+
+
+/* ===== Where monospace survives inside the GUI ===== */
+/* The apps wear the UI face, but a few things inside them are still text whose
+   meaning is in its shape: paths, error strings, key names, source, and anything
+   lined up by padding. Those keep the terminal face. */
+.fm-crumbs button,
+.fm-size, .fm-date,
+.fm-status,
+.fm-dot,
+.fm-props dd,
+pre.fm-view-body,
+.vw-path,
+.vw-pre,
+.brw-omni input,
+.brw-status,
+.brw-stop-code,
+.set-key kbd,
+.mpv-list,
+.mpv-strip-clock, .mpv-strip-pos,
+.mus-times,
+.pdfv-size { font-family: var(--mono); }
+
+/* Window decoration is the system's, not the app's, so every title bar matches:
+   the terminal's says the same kind of thing the others do. */
+.term-title { font-family: var(--ui); }
+/* The status strip is a control bar like the dock, so it reads like one. The track
+   list under it stays monospace, because its numbers are aligned by padding. */
+.mpv-strip { font-family: var(--ui); }
+
+/* Markdown keeps its own two faces: prose in the UI one, code in the terminal one. */
+.md { font-family: var(--ui); }
+.md code, .md-code, .md-code code { font-family: var(--mono); }
+
+/* The dock, the menus, the lock screen and the toasts inherit the UI face from
+   .desktop already; the clock is the one that also wants tabular figures. */
+.dock-clock, .lock-time { font-variant-numeric: tabular-nums; }
+
+/* Two animations were referenced and never defined, so the typing indicator never
+   blinked and chat messages never faded in. Neither raised an error; they just did
+   nothing. A smoke test now checks that every animation named here exists. */
+@keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0.25; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg, .chat-pending, .cw-dots, .lock-hint { animation: none; }
+}
+
+/* Windows with no launcher of their own get their own dock button, so a minimised
+   viewer is not lost. Marked apart from the launchers they sit beside. */
+.dock-sep { width: 1px; align-self: stretch; margin: 8px 2px; background: var(--t-border); }
+.dock-item.dock-win { opacity: 0.85; }
+.dock-item.dock-win:hover, .dock-item.dock-win.on { opacity: 1; }
+
+/* An app with more than one window gets a wider mark under it, the way a dock
+   shows a stack rather than a single running app. */
+.dock-item.many::after { width: 20px; }
+
+/* What is left when a window's contents throw. It fills the window so the frame
+   still looks like a window, and says which one died. */
+.win-crash {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; padding: 24px;
+  background: var(--t-bg); color: var(--t-muted); text-align: center;
+  font-family: var(--ui); font-size: 13px;
+}
+.win-crash-app { color: var(--t-red); font-weight: 600; }
+.win-crash p { margin: 0; max-width: 28rem; line-height: 1.6; }
+.win-crash code {
+  font-family: var(--mono); font-size: 11px; color: var(--t-fg);
+  background: var(--t-titlebar); border: 1px solid var(--t-border);
+  border-radius: 3px; padding: 4px 8px; max-width: 32rem; overflow-wrap: anywhere;
+}
+.win-crash-act { display: flex; gap: 8px; margin-top: 4px; }
+.win-crash-act button {
+  font: inherit; font-size: 12px; cursor: pointer;
+  color: var(--t-fg); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 3px 12px;
+}
+.win-crash-act button:hover { border-color: var(--t-accent); color: var(--t-accent); }

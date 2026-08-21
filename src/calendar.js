@@ -6,14 +6,14 @@
     source: "mock",
     events: [
       { start: isoAt(0, 10, 0),  end: isoAt(0, 11, 30), title: "Advisor 1:1",              location: "IT-3 421",       tag: "lab" },
-      { start: isoAt(0, 14, 0),  end: isoAt(0, 15, 0),  title: "Paper reading — ICSE'25",   location: "zoom",           tag: "lab" },
+      { start: isoAt(0, 14, 0),  end: isoAt(0, 15, 0),  title: "Paper reading: ICSE'25",   location: "zoom",           tag: "lab" },
       { start: isoAt(0, 19, 0),  end: isoAt(0, 20, 30), title: "Gym",                       location: "",               tag: "life" },
       { start: isoAt(1,  9, 30), end: isoAt(1, 11, 0),  title: "Lab seminar",               location: "IT-3 507",       tag: "lab" },
-      { start: isoAt(1, 13, 0),  end: isoAt(1, 14, 0),  title: "Writing block — LLM oracle",location: "",               tag: "focus" },
-      { start: isoAt(2, 15, 0),  end: isoAt(2, 16, 30), title: "Mentoring — undergrad",     location: "online",         tag: "teach" },
+      { start: isoAt(1, 13, 0),  end: isoAt(1, 14, 0),  title: "Writing block: LLM oracle",location: "",               tag: "focus" },
+      { start: isoAt(2, 15, 0),  end: isoAt(2, 16, 30), title: "Mentoring: undergrad",     location: "online",         tag: "teach" },
       { start: isoAt(3, 11, 0),  end: isoAt(3, 12, 0),  title: "TIL review",                location: "",               tag: "focus" },
       { start: isoAt(4, 18, 0),  end: isoAt(4, 21, 0),  title: "Dinner w/ lab",             location: "북구 복현동",     tag: "life" },
-      { start: isoAt(6, 10, 0),  end: isoAt(6, 18, 0),  title: "Deep work — SLM fuzzer",    location: "",               tag: "focus" },
+      { start: isoAt(6, 10, 0),  end: isoAt(6, 18, 0),  title: "Deep work: SLM fuzzer",    location: "",               tag: "focus" },
     ],
   };
 
@@ -27,11 +27,29 @@
   let CACHE = null;
 
   // Same rules the sync script uses, so live and snapshot data get tagged alike.
+  //
+  // The calendar already labels most entries with a bracket prefix ([수업], [TA],
+  // [Seminar]), so that is read first: it is the owner's own classification and it
+  // beats guessing from keywords. The keyword pass only catches what has no prefix.
+  const PREFIX_TAG = {
+    "수업": "class", "class": "class", "강의": "class",
+    "ta": "teach", "멘토": "teach", "조교": "teach",
+    "seminar": "lab", "세미나": "lab", "lab": "lab", "미팅": "lab",
+  };
+
   function tagFor(title) {
-    const t = String(title || "").toLowerCase();
-    if (/lab|seminar|advisor|meeting|미팅|세미나/.test(t)) return "lab";
+    const raw = String(title || "");
+    const m = /^\s*\[([^\]]+)\]/.exec(raw);
+    if (m) {
+      const tag = PREFIX_TAG[m[1].trim().toLowerCase()];
+      if (tag) return tag;
+    }
+    const t = raw.toLowerCase();
+    if (/seminar|advisor|meeting|미팅|세미나|lab/.test(t)) return "lab";
     if (/focus|writing|deep work|집중|작성/.test(t)) return "focus";
-    if (/mentor|teach|ta|tutor|멘토|조교/.test(t)) return "teach";
+    // ta, not `ta`: the bare substring matched any word containing those letters.
+    if (/mentor|teach|tutor|ta|멘토|조교/.test(t)) return "teach";
+    if (/exam|시험|수업|강의/.test(t)) return "class";
     if (/gym|dinner|lunch|birthday|운동|저녁|점심|생일/.test(t)) return "life";
     return "other";
   }
@@ -92,7 +110,7 @@
       if (!j.events || !Array.isArray(j.events)) throw new Error("bad shape");
       CACHE = j;
     } catch (e) {
-      // Only on real fetch/parse failure — preserves empty state when data is valid but empty.
+      // Only on real fetch/parse failure - preserves empty state when data is valid but empty.
       CACHE = MOCK;
     }
     return CACHE;

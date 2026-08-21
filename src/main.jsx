@@ -1,5 +1,5 @@
 // Entry point. Bundles all site modules + renders <App/>.
-// All legacy modules keep their window-global side-effect pattern — they're imported
+// All legacy modules keep their window-global side-effect pattern - they're imported
 // here so esbuild includes them in the bundle in the right order.
 
 import * as React from "preact/compat";
@@ -8,6 +8,7 @@ import { render } from "preact/compat";
 import "./data.js";
 import "./themes.js";
 import "./prefs.js";
+import "./wm.js";
 import "./fs.js";
 import "./coreutils.js";
 import "./calendar.js";
@@ -40,6 +41,8 @@ const BOOT_LINES = [
   "[    0.319662] systemd[1]: Starting user sessions...",
   "[    0.346128] systemd[1]: Reached target Multi-User System.",
   "[    0.381004] eth0: link becomes ready",
+  "[    0.402117] jikwm: starting window manager on tty1",
+  "[    0.437885] jikwm: 1 display, 4 workspaces, compositing on",
   "[    0.415773] Locale set to ko_KR.UTF-8 (KST, UTC+09:00)",
   "[    0.488210] ",
   "[    0.531446] JIKOS 1.0  99jik  tty1",
@@ -56,12 +59,12 @@ function BootSequence({ onDone }) {
     if (doneRef.current) return;
     doneRef.current = true;
     setFading(true);
-    setTimeout(onDone, 500);
+    setTimeout(onDone, 260);
   }, [onDone]);
 
   React.useEffect(() => {
     if (count > BOOT_LINES.length) {
-      const t = setTimeout(finish, 700);
+      const t = setTimeout(finish, 380);
       return () => clearTimeout(t);
     }
     // Emulate slow early lines, faster middle, pause at tail for presence.
@@ -133,7 +136,7 @@ function viewFromUrl() {
 }
 
 const BOOT_KEY = "99jik:booted";
-const BOOT_VERSION = "1";
+const BOOT_VERSION = "2";   // bumped: the boot now hands over to a desktop
 
 function App() {
   const [tweaks, setTweaks] = React.useState(window.PREFS.load);
@@ -144,8 +147,12 @@ function App() {
     if (window.prefersReducedMotion()) return true;
     return window.PREFS.store.get(BOOT_KEY) === BOOT_VERSION;
   });
+  // True only for the run that just watched the boot log, so the desktop wakes up
+  // once rather than on every re-render and every return visit.
+  const [cameUpCold, setCameUpCold] = React.useState(false);
   const onBootDone = () => {
     setBootDone(true);
+    setCameUpCold(true);
     window.PREFS.store.set(BOOT_KEY, BOOT_VERSION);
   };
 
@@ -187,7 +194,9 @@ function App() {
 
   // `reboot` easter egg → replay the boot sequence on demand.
   React.useEffect(() => {
-    const onReboot = () => setBootDone(false);
+    // cameUpCold has to drop too, or the desktop keeps the class from the first
+    // boot and the wake-up choreography never re-triggers.
+    const onReboot = () => { setCameUpCold(false); setBootDone(false); };
     window.addEventListener("site-reboot", onReboot);
     return () => window.removeEventListener("site-reboot", onReboot);
   }, []);
@@ -196,7 +205,9 @@ function App() {
     <>
       {!bootDone && <BootSequence onDone={onBootDone} />}
       {mode === "terminal"
-        ? <Desktop lang={tweaks.lang}>
+        ? <Desktop lang={tweaks.lang} onLang={(l) => setTw({ lang: l })}
+                   theme={tweaks.theme} onTheme={(t) => setTw({ theme: t })}
+                   onEasy={() => setMode("easy")} cold={cameUpCold}>
             <TerminalView onModeChange={setMode} onTheme={(t) => setTw({ theme: t })} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
           </Desktop>
         : <EasyMode onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // scripts/fetch-calendar.mjs
-// Pulls the iCal secret URL, filters private events, writes public/calendar.json.
-// Run by .github/workflows/calendar.yml once a day (20:00 UTC / 05:00 KST).
+// Pulls the public iCal feed and writes public/calendar.json.
+//
+// This is the fallback path, not the main one: the browser reads the calendar live
+// through the Calendar API (see src/calendar.js). The deploy workflow runs this so
+// the snapshot shipped in the build is current, and local development uses it too,
+// because the API key is referrer-restricted and will not answer from localhost.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -22,7 +26,7 @@ if (!ICAL_URL) {
 }
 console.log(`source: ${process.env.ICAL_URL ? "ICAL_URL env" : "src/data.js site.icalUrl"}`);
 
-// Minimal .ics parser — handles VEVENT blocks with DTSTART/DTEND/SUMMARY/LOCATION/CATEGORIES.
+// Minimal .ics parser: handles VEVENT blocks with DTSTART/DTEND/SUMMARY/LOCATION/CATEGORIES.
 // Good enough for Google Calendar's "private address → iCal" output.
 function parseICS(text) {
   const unfolded = text.replace(/\r?\n[ \t]/g, "");
@@ -57,7 +61,7 @@ function toISO(rawKey, val) {
   if (/^\d{8}T\d{6}Z$/.test(val)) {
     return `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}T${val.slice(9,11)}:${val.slice(11,13)}:${val.slice(13,15)}Z`;
   }
-  // Local "YYYYMMDDTHHMMSS" — assume KST
+  // Local "YYYYMMDDTHHMMSS", assume KST
   if (/^\d{8}T\d{6}$/.test(val)) {
     return `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}T${val.slice(9,11)}:${val.slice(11,13)}:${val.slice(13,15)}+09:00`;
   }
@@ -68,12 +72,28 @@ function unescapeICS(v) {
   return v.replace(/\\n/gi, " ").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\").trim();
 }
 
+// Must stay identical to tagFor in src/calendar.js: the snapshot and the live read
+// have to tag the same event the same way or `now` changes meaning when the API
+// is unreachable. The bracket prefix wins because the calendar owner wrote it.
+const PREFIX_TAG = {
+  "수업": "class", "class": "class", "강의": "class",
+  "ta": "teach", "멘토": "teach", "조교": "teach",
+  "seminar": "lab", "세미나": "lab", "lab": "lab", "미팅": "lab",
+};
+
 function tagFor(ev) {
-  const title = (ev.title || "").toLowerCase();
+  const raw = ev.title || "";
+  const m = /^\s*\[([^\]]+)\]/.exec(raw);
+  if (m) {
+    const tag = PREFIX_TAG[m[1].trim().toLowerCase()];
+    if (tag) return tag;
+  }
+  const title = raw.toLowerCase();
   const cats = (ev.categories || []).map(c => c.toLowerCase());
-  if (cats.includes("lab") || /lab|seminar|advisor|meeting|미팅|세미나/.test(title)) return "lab";
+  if (cats.includes("lab") || /seminar|advisor|meeting|미팅|세미나|lab/.test(title)) return "lab";
   if (cats.includes("focus") || /focus|writing|deep work|집중|작성/.test(title)) return "focus";
-  if (cats.includes("teach") || /mentor|teach|ta|tutor|멘토|조교/.test(title)) return "teach";
+  if (cats.includes("teach") || /mentor|teach|tutor|ta|멘토|조교/.test(title)) return "teach";
+  if (cats.includes("class") || /exam|시험|수업|강의/.test(title)) return "class";
   if (cats.includes("life") || /gym|dinner|lunch|birthday|운동|저녁|점심|생일/.test(title)) return "life";
   return "other";
 }

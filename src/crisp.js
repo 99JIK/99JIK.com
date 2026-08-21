@@ -1,4 +1,4 @@
-// Live chat via Crisp. The default chatbox UI is hidden — messages flow through
+// Live chat via Crisp. The default chatbox UI is hidden - messages flow through
 // the terminal's own chat mode via custom events.
 //
 // Docs: https://help.crisp.chat/en/article/how-to-use-javascript-sdk-actions-triggers-events-1qegzb9/
@@ -15,9 +15,9 @@
     locale: document.documentElement.lang === "en" ? "en" : "ko",
   };
 
-  // Hide the default chatbox — we render messages inside the terminal.
+  // Hide the default chatbox - we render messages inside the terminal.
   window.$crisp.push(["do", "chat:hide"]);
-  // Mute notification sounds — our UI already surfaces new messages visually.
+  // Mute notification sounds - our UI already surfaces new messages visually.
   window.$crisp.push(["config", "sound:mute", [true]]);
 
   // Prevent Crisp from mutating <title> with unread counts like "💬 7 - ...".

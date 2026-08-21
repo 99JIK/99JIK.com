@@ -94,15 +94,25 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 
 날짜는 손으로 적지 않습니다. 푸터의 저작권 연도와 업데이트 날짜는 빌드 시각(`__BUILD_DATE__`)에서 유도됩니다.
 
-## 캘린더 동기화
+## 캘린더
 
-[.github/workflows/calendar.yml](.github/workflows/calendar.yml)이 하루 한 번(20:00 UTC, 05:00 KST) Google Calendar의 iCal 주소를 읽어 `public/calendar.json`으로 커밋합니다. 사이트는 이 JSON을 읽어 `now` 명령과 Easy Mode 캘린더를 그립니다.
+브라우저가 **Google Calendar API로 직접** 읽습니다. 동기화가 필요 없고, 반복 일정도 인스턴스로 펼쳐집니다.
 
-설정은 리포 Secrets에 `ICAL_URL` 하나입니다. Google Calendar에서 해당 캘린더 설정 > **캘린더 통합** > **비공개 주소(iCal 형식)**의 `.../private-xxxxx/basic.ics` URL을 넣으면 됩니다.
+키는 [data.js](src/data.js)의 `site.gcalApiKey`에 있습니다. 브라우저 키라 번들에 노출되는 게 정상이고, **유일한 방어선은 Google Cloud의 HTTP 리퍼러 제한**입니다. 현재 `99jik.com` 계열만 허용돼 있어서 다른 곳에서는 403이 납니다. 키를 갈 때는 제한을 다시 거는 걸 잊지 마세요.
 
-**공개 범위 주의.** [scripts/fetch-calendar.mjs](scripts/fetch-calendar.mjs)의 현재 필터는 **공개가 기본**입니다. 제목에 `[private]` 또는 `[비공개]`가 들어간 일정만 버리고, 나머지는 제목과 장소를 그대로 공개 JSON에 씁니다. 그 JSON은 리포에 커밋되므로 나중에 지워도 git 히스토리에 남습니다.
+`localhost`는 일부러 허용 목록에서 뺐습니다. 그래서 로컬 개발에서는 API가 실패하고 아래 스냅샷으로 떨어집니다.
 
-동기화가 멈췄을 때는 `Actions > Sync calendar`를 봅니다. 스크립트는 매 실행마다 `updated` 타임스탬프를 새로 쓰므로 **성공하면 반드시 커밋이 생깁니다.** 커밋이 없다면 워크플로가 비활성화됐거나(활동 없는 리포의 cron은 자동으로 꺼집니다) `ICAL_URL`이 만료된 것입니다.
+### 폴백 스냅샷
+
+`public/calendar.json`은 API가 실패했을 때(할당량, 키 문제, 구글 장애) 쓰이는 마지막 방어선입니다. [scripts/fetch-calendar.mjs](scripts/fetch-calendar.mjs)가 공개 iCal 피드에서 만들고, **배포 워크플로가 빌드 직전에 갱신**합니다. 커밋되지 않으므로 봇 커밋이 쌓이거나 충돌할 일이 없습니다.
+
+수동으로 갱신하려면 `npm run calendar` 입니다.
+
+수집 범위는 ±1년입니다. 날짜 필터링은 [calendar.js](src/calendar.js)가 브라우저에서 하므로, 스냅샷이 오래돼도 그 범위 안에서는 정확합니다. 예전에 `-1일~+45일`로 잘라 저장하던 시절에는 동기화가 멈추면 곧바로 빈 화면이 됐습니다.
+
+### 공개 범위
+
+이 캘린더는 공개입니다. 제목에 `[private]` 또는 `[비공개]`가 들어간 일정만 제외되고 나머지는 제목과 장소가 그대로 보입니다. 비공개 캘린더로 바꾸려면 API 키 방식을 버리고 시크릿 기반 동기화로 되돌려야 합니다.
 
 ## 배포
 

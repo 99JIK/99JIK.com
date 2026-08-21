@@ -15,11 +15,12 @@
     // `now` renders through the NowBlock component, which owns its own strings
     // (view strings live with the view, same as terminal-view.jsx's T object).
     pubs_h:      { ko: "논문 / 글", en: "Publications" },
+    pat_h:       { ko: "특허", en: "Patents" },
     exp_h:       { ko: "경력 및 학력", en: "Experience & Education" },
     ls_nodir:    { ko: (d) => `ls: ${d}: 그런 디렉토리는 없습니다. try: ls projects`, en: (d) => `ls: ${d}: no such directory. try: ls projects` },
     cat_usage:   {
-      ko: () => { const s = D().projects[0]?.slug || "<slug>"; return `usage: cat <slug>  — 예: cat ${s}`; },
-      en: () => { const s = D().projects[0]?.slug || "<slug>"; return `usage: cat <slug>  — e.g. cat ${s}`; },
+      ko: () => { const s = D().projects[0]?.slug || "<slug>"; return `usage: cat <slug>  - 예: cat ${s}`; },
+      en: () => { const s = D().projects[0]?.slug || "<slug>"; return `usage: cat <slug>  - e.g. cat ${s}`; },
     },
     cat_nf:      { ko: (s) => `cat: ${s}: 파일을 찾지 못했어요.`, en: (s) => `cat: ${s}: not found.` },
     stack:       { ko: "스택", en: "stack" },
@@ -31,8 +32,8 @@
     book_link:   { ko: "시간 예약하기 ↗", en: "Book a time ↗" },
     til_go:      { ko: () => `→ ${D().site.til} 으로 이동합니다`, en: () => `→ heading to ${D().site.til}` },
     til_link:    { ko: () => `${D().site.til} 열기 ↗`, en: () => `open ${D().site.til} ↗` },
-    nf:          { ko: (c) => `명령을 찾지 못했어요: ${c} — 'help' 또는 '?' 를 눌러보세요`, en: (c) => `command not found: ${c} — try 'help' or '?'` },
-    theme_usage: { ko: "usage: theme <name>  — 선택지:", en: "usage: theme <name>  — options:" },
+    nf:          { ko: (c) => `명령을 찾지 못했어요: ${c}. 'help' 또는 '?' 를 눌러보세요`, en: (c) => `command not found: ${c}. try 'help' or '?'` },
+    theme_usage: { ko: "usage: theme <name>  - 선택지:", en: "usage: theme <name>  - options:" },
     theme_unk:   { ko: (k) => `theme: ${k}: 모르는 테마`, en: (k) => `theme: ${k}: unknown` },
     easy_msg:    { ko: "Easy Mode 로 전환...", en: "switching to Easy Mode..." },
     lang_usage:  { ko: "usage: lang ko|en", en: "usage: lang ko|en" },
@@ -55,6 +56,7 @@
         en: () => `Project detail (cat ${D().projects[0]?.slug || "<slug>"})`,
       },
       publications: { ko: "논문 / 글", en: "Publications" },
+      patents:  { ko: "특허", en: "Patents" },
       experience: { ko: "경력 / 학력", en: "Experience / Education" },
       skills:   { ko: "언어 · 도구 · 연구", en: "Languages · tools · research" },
       now:      { ko: "지금 무엇을 하고 있나요", en: "What I'm working on now" },
@@ -126,7 +128,7 @@
       }},
 
       research: { usage: "research", hint: H("research"), run: () => {
-        const rows = D().research.map(r => [r.tag, lang === "ko" ? `${r.title_ko} — ${r.blurb_ko}` : `${r.title_en} — ${r.blurb_en}`]);
+        const rows = D().research.map(r => [r.tag, lang === "ko" ? `${r.title_ko}: ${r.blurb_ko}` : `${r.title_en}: ${r.blurb_en}`]);
         return [{ kind: "text", text: t("research_h") + ":", strong: true }, ...kvLines(rows)];
       }},
 
@@ -151,26 +153,32 @@
       weather: {
         usage: "weather [city]",
         hint: lang === "ko" ? "현재 날씨 (weather, weather seoul)" : "current weather (weather, weather seoul)",
-        run: (args) => [{ kind: "weather", location: args[0] || "Daegu" }],
+        run: (args) => [{ kind: "weather", location: args[0] || D().profile.weatherLocation }],
       },
 
+      // Columns are padded by display cells, and that is only half of it: Hangul has
+      // no glyphs in JetBrains Mono, so it comes from the next font in the stack,
+      // whose advance is not reliably exactly twice the Latin one. Padding a Korean
+      // column therefore drifts no matter how the cells are counted. The title goes
+      // last instead, where nothing after it can be pushed out of line.
       projects: { usage: "projects", hint: H("projects"), run: () => {
         const P = window.TEXT.padEnd;
         const items = D().projects;
         const wSlug = items.reduce((m, p) => Math.max(m, window.TEXT.cells(p.slug)), 4);
-        const wTitle = items.reduce((m, p) => Math.max(m, window.TEXT.cells(lang === "ko" ? p.title_ko : p.title_en)), 5);
+        const wStack = items.reduce((m, p) => Math.max(m, window.TEXT.cells(p.stack.join(", "))), 5);
         return [
-          { kind: "text", text: `${P("SLUG", wSlug + 2)}${P("YEAR", 6)}${P("TITLE", wTitle + 2)}STACK`, dim: true },
+          { kind: "text", text: `${P("SLUG", wSlug + 2)}${P("YEAR", 6)}${P("STACK", wStack + 2)}TITLE`, dim: true },
           ...items.map(p => {
             const title = lang === "ko" ? p.title_ko : p.title_en;
+            const stack = p.stack.join(", ");
             return {
               kind: "text",
-              text: `${P(p.slug, wSlug + 2)}${P(p.year, 6)}${P(title, wTitle + 2)}${p.stack.join(", ")}`,
+              text: `${P(p.slug, wSlug + 2)}${P(p.year, 6)}${P(stack, wStack + 2)}${title}`,
               parts: [
                 { t: P(p.slug, wSlug + 2), c: "key" },
                 { t: P(p.year, 6), c: "num" },
-                { t: P(title, wTitle + 2) },
-                { t: p.stack.join(", "), c: "meta" },
+                { t: P(stack, wStack + 2), c: "meta" },
+                { t: title },
               ],
             };
           }),
@@ -190,6 +198,11 @@
             { kind: "text", text: "" },
             { kind: "text", text: lang === "ko" ? p.summary_ko : p.summary_en },
             { kind: "text", text: lang === "ko" ? p.summary_en : p.summary_ko, dim: true },
+            // The detail is what the CV says. Not every project has any.
+            ...(((lang === "ko" ? p.detail_ko : p.detail_en) || []).length
+              ? [{ kind: "text", text: "" },
+                 ...(lang === "ko" ? p.detail_ko : p.detail_en).map(d => ({ kind: "text", text: "  - " + d }))]
+              : []),
             { kind: "text", text: "" },
             { kind: "link", href: `https://github.com/${D().site.github}/${p.slug}`, text: t("read_repo", p.slug) },
           ];
@@ -198,10 +211,33 @@
         return window.FS.cat(args);
       }},
 
-      publications: { usage: "publications", hint: H("publications"), run: () => [
-        { kind: "text", text: t("pubs_h") + ":", strong: true },
-        ...D().publications.map(p => ({ kind: "text", text: `  ${p.year}  ${p.venue.padEnd(10)} ${p.title} (${p.role})` })),
-      ]},
+      publications: { usage: "publications", hint: H("publications"), run: () => {
+        const pubs = D().publications;
+        // Nothing yet is a real answer, and a bare heading with nothing under it
+        // reads as something failing to load.
+        if (!pubs.length) return [{ kind: "text", strong: true, text: t("pubs_h") + ":" },
+          { kind: "text", dim: true, text: lang === "ko"
+            ? "  아직 심사를 통과한 것이 없습니다. 진행 중인 연구는 `research` 와 `projects` 에 있습니다."
+            : "  Nothing through review yet. The work in progress is under `research` and `projects`." }];
+        return [{ kind: "text", text: t("pubs_h") + ":", strong: true },
+          ...pubs.map(p => ({ kind: "text",
+            // Pages only when there are pages: a workshop paper has none, and an
+            // empty column looks like something failed to load.
+            text: `  ${p.year}  ${p.venue.padEnd(11)}${(p.pages ? "pp." + p.pages : "").padEnd(12)} ${lang === "ko" ? p.title_ko : p.title_en}` })),
+          { kind: "text", dim: true, text: lang === "ko"
+            ? "  전부 제1저자, 국내 학술대회 (원문 한국어)"
+            : "  All first author, domestic conferences, originally in Korean" }];
+      }},
+
+      patents: { usage: "patents", hint: H("patents"), run: () => {
+        const pats = D().patents || [];
+        if (!pats.length) return [{ kind: "text", dim: true, text: lang === "ko" ? "등록된 특허가 없습니다." : "No patents." }];
+        return [{ kind: "text", text: t("pat_h") + ":", strong: true },
+          ...pats.flatMap(x => [
+            { kind: "text", text: `  ${x.year}  ${lang === "ko" ? x.title_ko : x.title_en}` },
+            { kind: "text", dim: true, text: `        ${lang === "ko" ? x.status_ko : x.status_en} · ${lang === "ko" ? x.holder_ko : x.holder_en}` },
+          ])];
+      }},
 
       experience: { usage: "experience", hint: H("experience"), run: () => [
         { kind: "text", text: t("exp_h") + ":", strong: true },
@@ -211,9 +247,11 @@
       skills: { usage: "skills", hint: H("skills"), run: () => {
         const s = D().skills;
         return kvLines([
+          // The CV's four rows, in its order.
           ["languages", s.languages.join(", ")],
+          ["web",       s.web.join(", ")],
+          ["data",      s.data.join(", ")],
           ["tools",     s.tools.join(", ")],
-          ["research",  s.research.join(", ")],
         ]);
       }},
 
@@ -396,6 +434,23 @@
     }
     return [];
   }
+
+  // Somewhere else on the desktop can hand the shell a line to run. It is a queue
+  // rather than an event because there may be no terminal at the moment of asking,
+  // and several once there is: the line waits, and the focused shell takes it.
+  // Only `cd` is accepted, since anything on the page can call this.
+  window.SHELL = {
+    queue: [],
+    subs: new Set(),
+    run(line) {
+      const l = String(line || "").trim();
+      if (!/^cd (\/|~)[\w./~-]*$/.test(l)) return;
+      window.SHELL.queue.push(l);
+      window.SHELL.subs.forEach((f) => f());
+    },
+    take() { return window.SHELL.queue.splice(0); },
+    sub(f) { window.SHELL.subs.add(f); return () => { window.SHELL.subs.delete(f); }; },
+  };
 
   window.TERMINAL = { buildCommands, run, complete };
 })();

@@ -4,6 +4,8 @@
 
 import * as React from "preact/compat";
 import { ViEditor } from "./vi-editor.jsx";
+import { ytPlaylistItems, MpvStrip, PlayerBlock } from "./mpv.jsx";
+import { hushChat } from "./chat.jsx";
 
 function Block({ block, lang }) {
   if (block.kind === "text") {
@@ -21,8 +23,10 @@ function Block({ block, lang }) {
   }
   if (block.kind === "weather") return <WeatherBlock location={block.location} />;
   if (block.kind === "fetch") return <FetchBlock url={block.url} head={block.head} />;
-  if (block.kind === "qr") return <QrBlock grid={block.grid} caption={block.caption} />;
+  if (block.kind === "qr") return <QrBlock grid={block.grid} caption={block.caption} mode={block.mode} />;
+  if (block.kind === "live") return <LiveFileBlock source={block.source} path={block.path} />;
   if (block.kind === "now") return <NowBlock view={block.view} lang={lang} />;
+  if (block.kind === "player") return <PlayerBlock start={block.start} lang={lang} />;
   if (block.kind === "link") {
     return <a className="t-link" href={block.href} target="_blank" rel="noreferrer">{block.text}</a>;
   }
@@ -46,8 +50,11 @@ function Block({ block, lang }) {
       );
     } else body = block.text;
     return (
-      <div className={"chat-msg " + (block.role === "user" ? "chat-user" : "chat-bot")}>
-        <span className="chat-who">[{who}]</span>
+      <div className={"chat-msg " + (block.role === "user" ? "chat-user" : "chat-bot")
+                      + (block.cont ? " cont" : "")}>
+        {/* The column is still there when the name is not, so the text stays lined
+            up down the run instead of stepping left on the second line. */}
+        <span className="chat-who">{block.cont ? "" : `[${who}]`}</span>
         <span className="chat-body">{body}</span>
         {block.pending && <span className="chat-pending"> ...</span>}
       </div>
@@ -99,8 +106,31 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
   const [cmdStack, setCmdStack] = React.useState([]);
   const [stackIdx, setStackIdx] = React.useState(-1);
   const [chatOn, setChatOn] = React.useState(false);
-  const [promptName, setPromptName] = React.useState(() => (window.getPromptName ? window.getPromptName() : "anonymous"));
+  // This shell's identity. A new one starts as the stored login name; `su` after
+  // that belongs to this window only.
+  const nameRef = React.useRef(window.loginName ? window.loginName() : "anonymous");
+  const [promptName, setPromptName] = React.useState(nameRef.current);
+  // This terminal's own working directory. There can be several windows open, and
+  // `cd` in one used to move all of them: the filesystem holds one cwd, so each
+  // shell points it at its own before running anything.
+  const cwdRef = React.useRef(window.FS ? window.FS.getCwd() : "/home/jeongin");
   const [promptPath, setPromptPath] = React.useState(() => (window.FS ? window.FS.displayCwd() : "~"));
+
+  // Everything that reads the filesystem goes through here first.
+  const atCwd = React.useCallback((fn) => {
+    if (!window.FS) return fn();
+    window.FS.enter(cwdRef.current);
+    if (window.enterPromptName) window.enterPromptName(nameRef.current);
+    try { return fn(); }
+    finally {
+      cwdRef.current = window.FS.getCwd();
+      setPromptPath(window.FS.displayCwd());
+      if (window.getPromptName) {
+        nameRef.current = window.getPromptName();
+        setPromptName(nameRef.current);
+      }
+    }
+  }, []);
   const [matrixOn, setMatrixOn] = React.useState(false);
   const [suAwait, setSuAwait] = React.useState(null);   // account being authenticated
   const [rsearch, setRsearch] = React.useState(null);   // { term, skip } for Alt-R
@@ -114,24 +144,25 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
 
   React.useEffect(() => { window.TERM_HISTORY = cmdStack; }, [cmdStack]);
 
-  // su → Password: prompt flow. extras.js dispatches "su-prompt" for protected users.
+  // su -> Password: prompt flow. extras.js dispatches "su-prompt" for protected
+  // users. The event is global, so only the shell the command was typed into
+  // takes it: every other terminal would otherwise stop for a password nobody
+  // asked it for.
   React.useEffect(() => {
-    const h = (e) => setSuAwait((e && e.detail && e.detail.user) || null);
+    const h = (e) => {
+      if (wm && !wm.focused) return;
+      setSuAwait((e && e.detail && e.detail.user) || null);
+    };
     window.addEventListener("su-prompt", h);
     return () => window.removeEventListener("su-prompt", h);
-  }, []);
+  }, [wm && wm.focused]);
 
-  React.useEffect(() => {
-    const h = () => setPromptName(window.getPromptName ? window.getPromptName() : "anonymous");
-    window.addEventListener("promptname", h);
-    return () => window.removeEventListener("promptname", h);
-  }, []);
+  // `promptname` is global and stays that way for the chat nickname, but a shell no
+  // longer listens to it: another window running `su` is not this window's business.
 
-  React.useEffect(() => {
-    const h = () => setPromptPath(window.FS ? window.FS.displayCwd() : "~");
-    window.addEventListener("promptpath", h);
-    return () => window.removeEventListener("promptpath", h);
-  }, []);
+  // `promptpath` used to be how the prompt learned it had moved. It is global, so
+  // with more than one terminal it announced every shell's `cd` to all of them;
+  // atCwd() updates only the shell that ran the command.
 
   // Live chat: operator messages and typing indicator land in the scrollback.
   React.useEffect(() => {
@@ -193,7 +224,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
   React.useEffect(() => {
     setChatOn(false);
     const path = window.FS ? window.FS.displayCwd() : "~";
-    const blocks = (window.TERMINAL.run("about", lang) || []).filter(b => b.kind !== "mode");
+    const blocks = (atCwd(() => window.TERMINAL.run("about", lang)) || []).filter(b => b.kind !== "mode");
     setHistory([
       { type: "prompt", cmd: "about", chat: false, path, user: "anonymous" },
       { type: "out", blocks },
@@ -219,7 +250,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
     return () => obs.disconnect();
   }, []);
 
-  const currentPath = () => (window.FS ? window.FS.displayCwd() : "~");
+  const currentPath = () => (window.FS ? window.FS.displayCwd(cwdRef.current) : "~");
   const pushOut = (blocks) => setHistory(h => [...h, { type: "out", blocks }]);
   const setLine = (v, pos) => {
     setInput(v);
@@ -281,7 +312,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
     setHistory(h => [...h, { type: "prompt", cmd: typed, chat: false, path, user },
                      ...(changed ? [{ type: "out", blocks: [{ kind: "text", text: cmd, dim: true }] }] : [])]);
 
-    const blocks = window.TERMINAL.run(cmd, lang) || [];
+    const blocks = atCwd(() => window.TERMINAL.run(cmd, lang)) || [];
     pushOut(blocks);
     setLine("");
 
@@ -300,9 +331,33 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
       // `exit` from the login shell closes the window, which is what exiting a
       // login shell does on a real desktop.
       if (mode.action === "close-window" && wm && wm.onClose) setTimeout(wm.onClose, 250);
-      if (mode.action === "matrix") { setMatrixOn(true); setTimeout(() => setMatrixOn(false), 3500); }
+      if (mode.action === "open-window" && wm && wm.onOpen) wm.onOpen(mode.app, mode.arg);
+      if (mode.action === "matrix") setMatrixOn(true);
     }
   };
+
+  // The rest of the desktop can hand the terminal a line to run, which is how the
+  // file manager's "open in the terminal" gets you a shell already in that folder.
+  // The queue holds it until a shell is focused, so it works whether the window was
+  // closed, on another workspace, or one of several.
+  const focused = !wm || wm.focused;
+  React.useEffect(() => {
+    const drain = () => {
+      if (!focused) return;
+      for (const line of window.SHELL.take()) runCommand(line);
+    };
+    const off = window.SHELL.sub(drain);
+    drain();
+    return off;
+  }, [focused, lang, chatOn]);
+
+  // While the terminal is in chat mode the conversation is already on screen, so
+  // the dock should not also announce it.
+  React.useEffect(() => {
+    if (!chatOn) return;
+    hushChat(true);
+    return () => hushChat(false);
+  }, [chatOn]);
 
   const handleChat = (text) => {
     if (!text) return;
@@ -386,7 +441,8 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
 
     if (e.key === "Tab" && !chatOn) {
       e.preventDefault();
-      const opts = window.TERMINAL.complete(input, lang);
+      // Completion reads the filesystem, so it reads this shell's directory.
+      const opts = atCwd(() => window.TERMINAL.complete(input, lang));
       if (!opts.length) return;
       if (opts.length === 1) { setLine(opts[0] + " "); return; }
       const common = longestCommonPrefix(opts);
@@ -440,6 +496,8 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
                     chatOn={chatOn} onExitChat={() => handleChat("/exit")} user={promptName} path={promptPath}
                     wm={wm} />
 
+      <MpvStrip lang={lang} />
+
       {vi ? (
         <ViEditor
           path={vi.path}
@@ -466,12 +524,18 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
                 <span className="t-cmd">{h.password ? "" : h.cmd}</span>
               </div>
             );
-            if (h.type === "chatline") return (
-              <Block key={i} lang={lang} block={{
-                kind: "chatmsg", role: h.role, text: h.text, pending: h.pending,
-                contentKind: h.contentKind, fileName: h.fileName, fileType: h.fileType, fileUrl: h.fileUrl,
-              }} />
-            );
+            if (h.type === "chatline") {
+              // Repeating the name on every line of a run reads like two people
+              // taking turns when it is one person still talking.
+              const prev = history[i - 1];
+              const same = prev && prev.type === "chatline" && prev.role === h.role;
+              return (
+                <Block key={i} lang={lang} block={{
+                  kind: "chatmsg", role: h.role, text: h.text, pending: h.pending, cont: same,
+                  contentKind: h.contentKind, fileName: h.fileName, fileType: h.fileType, fileUrl: h.fileUrl,
+                }} />
+              );
+            }
             return <div key={i} className="t-out">{h.blocks.map((b, j) => <Block key={j} block={b} lang={lang} />)}</div>;
           })}
 
@@ -512,7 +576,7 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
       </div>
       )}
 
-      {matrixOn && <MatrixRain />}
+      {matrixOn && <MatrixRain lang={lang} onDone={() => setMatrixOn(false)} />}
     </div>
   );
 }
@@ -528,7 +592,7 @@ function BannerAnim() {
   return <Pick />;
 }
 
-// Lorenz attractor — integrates the classic chaotic ODE once, then rotates the
+// Lorenz attractor - integrates the classic chaotic ODE once, then rotates the
 // butterfly around its vertical axis. Orthographic projection fills the frame so
 // the two-lobed shape is actually recognizable.
 function LorenzSpin() {
@@ -570,7 +634,7 @@ function LorenzSpin() {
 
       for (let i = 0; i < pts.length; i++) {
         const px = pts[i][0], py = pts[i][1], pz = pts[i][2];
-        // Rotate around Lorenz z (vertical) — swings between front/side views.
+        // Rotate around Lorenz z (vertical) - swings between front/side views.
         const rx = px * cA - py * sA;
         const rDepth = px * sA + py * cA;
         const ry = pz;
@@ -597,9 +661,9 @@ function LorenzSpin() {
   return <pre ref={preRef} className="term-banner-anim anim-lorenz" aria-hidden="true" />;
 }
 
-// Andy Sloane's rotating torus — shaded via surface normal.
+// Andy Sloane's rotating torus - shaded via surface normal.
 
-// Andy Sloane's rotating torus — shaded via surface normal.
+// Andy Sloane's rotating torus - shaded via surface normal.
 function DonutSpin() {
   const preRef = React.useRef(null);
   React.useEffect(() => {
@@ -644,11 +708,11 @@ function DonutSpin() {
   return <pre ref={preRef} className="term-banner-anim anim-donut" aria-hidden="true" />;
 }
 
-// Starfield warp — stars stream radially outward from the center (hyperspace).
+// Starfield warp - stars stream radially outward from the center (hyperspace).
 // Each frame we draw a short line from the star's previous projected position
 // to its current one, so closer stars leave longer streaks.
 
-// Starfield warp — stars stream radially outward from the center (hyperspace).
+// Starfield warp - stars stream radially outward from the center (hyperspace).
 // Each frame we draw a short line from the star's previous projected position
 // to its current one, so closer stars leave longer streaks.
 function Starfield() {
@@ -719,9 +783,9 @@ function Starfield() {
   return <pre ref={preRef} className="term-banner-anim anim-starfield" aria-hidden="true" />;
 }
 
-// Rotating wireframe cube — 8 vertices, 12 edges, Bresenham line draw.
+// Rotating wireframe cube - 8 vertices, 12 edges, Bresenham line draw.
 
-// Rotating wireframe cube — 8 vertices, 12 edges, Bresenham line draw.
+// Rotating wireframe cube - 8 vertices, 12 edges, Bresenham line draw.
 function CubeSpin() {
   const preRef = React.useRef(null);
   React.useEffect(() => {
@@ -847,13 +911,20 @@ function TermTitleBar({ lang, onLang, onEasy, chatOn, onExitChat, user, path, wm
         {chatOn ? `chat - ${window.SITE_DATA.site.handle}` : `${user}@${window.SITE_DATA.site.handle}: ${path} - bash`}
       </div>
       <div className="term-title-actions">
-        <div className="lang-seg" role="group" aria-label="language">
-          <button className={"lang-btn" + (lang === "ko" ? " on" : "")} onClick={() => onLang("ko")}>한</button>
-          <button className={"lang-btn" + (lang === "en" ? " on" : "")} onClick={() => onLang("en")}>EN</button>
-        </div>
-        {chatOn
-          ? <button className="term-easy" onClick={onExitChat}>exit chat</button>
-          : <button className="term-easy" onClick={onEasy}>Easy Mode</button>}
+        {/* Language and Easy Mode live in the dock, which is always on screen, so a
+            second copy in this title bar is one the window has no business owning.
+            They come back only if the terminal is rendered without a desktop. */}
+        {!wm && (
+          <>
+            <div className="lang-seg" role="group" aria-label="language">
+              <button className={"lang-btn" + (lang === "ko" ? " on" : "")} onClick={() => onLang("ko")}>한</button>
+              <button className={"lang-btn" + (lang === "en" ? " on" : "")} onClick={() => onLang("en")}>EN</button>
+            </div>
+            {!chatOn && <button className="term-easy" onClick={onEasy}>Easy Mode</button>}
+          </>
+        )}
+        {/* Leaving chat mode is the terminal's own business, so it stays. */}
+        {chatOn && <button className="term-easy" onClick={onExitChat}>exit chat</button>}
       </div>
     </div>
   );
@@ -884,7 +955,7 @@ function pickWeatherArt(desc) {
 function WeatherBlock({ location }) {
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
-    const loc = encodeURIComponent(location || "Daegu");
+    const loc = encodeURIComponent(location || window.SITE_DATA.profile.weatherLocation);
     // Third-party endpoint, no SLA. Without a deadline a hung request leaves
     // "fetching weather..." on screen forever.
     let cancelled = false;
@@ -899,7 +970,7 @@ function WeatherBlock({ location }) {
 
   if (state.loading) return <div className="t-line dim">fetching weather...</div>;
   if (state.error || !state.data) {
-    return <div className="t-line warn">weather: could not fetch for {location || "Daegu"}.</div>;
+    return <div className="t-line warn">weather: could not fetch for {location || window.SITE_DATA.profile.weatherLocation}.</div>;
   }
   const cc = state.data.current_condition && state.data.current_condition[0];
   if (!cc) return <div className="t-line warn">weather: malformed response.</div>;
@@ -1094,6 +1165,141 @@ function QrBlock({ grid, caption, mode }) {
     </div>
   );
 }
+// Files whose contents come from the network: TIL entries and the commit log. They
+// are fetched when the file is opened rather than baked in at build time, so the
+// site is never a stale copy of another source.
+const LIVE_SOURCES = {
+  til: {
+    url: () => window.SITE_DATA.site.tilUrl + "/blog/rss.xml",
+    parse: (text) => {
+      const posts = window.FS.parseFeed(text, 15);
+      if (!posts.length) throw new Error("empty feed");
+      const w = posts.reduce((m, p) => Math.max(m, p.title.length), 0);
+      return [
+        "# " + window.SITE_DATA.site.til + " -- " + posts.length + " most recent entries",
+        "",
+        ...posts.map(p => p.date + "  " + p.title.padEnd(w + 2) + p.link),
+      ];
+    },
+  },
+  playlist: {
+    // A real .m3u: one #EXTINF line per track, then the URL. Long, because the
+    // playlist is long. `mpv` renders the same list as a player instead.
+    load: (signal) => ytPlaylistItems(signal).then((tracks) => [
+      "#EXTM3U",
+      "# " + tracks.length + " tracks. `mpv ~/.midnight/playlist.m3u` plays them here.",
+      "",
+      ...tracks.flatMap((t) => [
+        "#EXTINF:-1," + t.title,
+        "https://www.youtube.com/watch?v=" + t.id,
+      ]),
+    ]),
+  },
+  now: {
+    // ~/now.log is the calendar, read as a log: what the last few days actually
+    // went to, what the next few are already claimed by, and where the cursor sits
+    // between them. Nothing here is typed by hand, so it cannot go stale.
+    load: () => window.CALENDAR.load().then((data) => {
+      const at = new Date();
+      const all = (data.events || [])
+        .map((e) => ({ ...e, _s: new Date(e.start), _e: new Date(e.end) }))
+        .filter((e) => !isNaN(e._s))
+        .sort((a, b) => a._s - b._s);
+      const done = all.filter((e) => e._e < at).slice(-8);
+      const live = all.filter((e) => e._s <= at && e._e >= at);
+      const next = all.filter((e) => e._s > at).slice(0, 8);
+      const rows = [...done, ...live, ...next];
+      if (!rows.length) return ["# now.log", "", "(calendar is empty)"];
+
+      const stamp = (d) =>
+        d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0") + " " +
+        String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      const tagW = rows.reduce((m, e) => Math.max(m, (e.tag || "other").length), 0);
+      const state = (e) => (e._e < at ? "done" : e._s <= at ? "now" : "");
+
+      // The span is spelled out rather than implied. A quiet stretch in the calendar
+      // shows up as a gap between these two dates instead of old entries passing
+      // themselves off as recent.
+      const day = (d) => d.toISOString().slice(0, 10);
+      return [
+        "# now.log -- generated from the calendar, " +
+          (data.live ? "read live" : "from the last snapshot"),
+        "# " + day(rows[0]._s) + " .. " + day(rows[rows.length - 1]._s) +
+          "  (" + done.length + " done, " + live.length + " running, " + next.length + " ahead)",
+        "",
+        ...rows.map((e) => {
+          const st = state(e);
+          return stamp(e._s) + "  " + (e.tag || "other").padEnd(tagW) + "  " +
+                 (st === "now" ? "> " : "  ") + e.title +
+                 (st === "done" ? "" : st === "now" ? "  (running)" : "");
+        }),
+      ];
+    }),
+  },
+  repos: {
+    url: () => "https://api.github.com/users/" + window.SITE_DATA.site.github +
+               "/repos?per_page=100&sort=pushed",
+    parse: (text) => {
+      const rows = JSON.parse(text);
+      if (!Array.isArray(rows)) throw new Error(rows.message || "unexpected response");
+      const own = rows.filter(r => !r.fork);
+      const w = own.reduce((m, r) => Math.max(m, r.name.length), 0);
+      return [
+        "# " + own.length + " public repositories",
+        "",
+        ...own.map(r =>
+          (r.pushed_at || "").slice(0, 10) + "  " +
+          r.name.padEnd(w + 2) +
+          String(r.language || "-").padEnd(12) +
+          (r.description || "")),
+      ];
+    },
+  },
+  commits: {
+    url: () => "https://api.github.com/repos/" + window.SITE_DATA.site.github +
+               "/" + window.SITE_DATA.site.domain + "/commits?per_page=15",
+    parse: (text) => {
+      const rows = JSON.parse(text);
+      if (!Array.isArray(rows)) throw new Error(rows.message || "unexpected response");
+      return [
+        "# " + rows.length + " most recent commits",
+        "",
+        ...rows.map((c) => {
+          const a = c.commit.author;
+          return a.date.slice(0, 10) + "  " + c.sha.slice(0, 7) + "  " +
+                 String(a.name).slice(0, 14).padEnd(14) + " " +
+                 c.commit.message.split(String.fromCharCode(10))[0];
+        }),
+      ];
+    },
+  },
+};
+
+function LiveFileBlock({ source, path }) {
+  const [state, setState] = React.useState({ loading: true });
+  React.useEffect(() => {
+    const spec = LIVE_SOURCES[source];
+    if (!spec) { setState({ loading: false, error: "unknown source" }); return; }
+    let cancelled = false;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 12000);
+    // A source either paginates itself (load) or is one GET away (url + parse).
+    const work = spec.load
+      ? spec.load(ctl.signal)
+      : fetch(spec.url(), { signal: ctl.signal, cache: "no-store" })
+          .then((r) => r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)))
+          .then((t) => spec.parse(t));
+    work
+      .then((lines) => { if (!cancelled) setState({ loading: false, lines }); })
+      .catch((e) => { if (!cancelled) setState({ loading: false, error: e.message || String(e) }); });
+    return () => { cancelled = true; clearTimeout(timer); ctl.abort(); };
+  }, [source]);
+
+  if (state.loading) return <div className="t-line dim">reading...</div>;
+  if (state.error) return <div className="t-line warn">cat: {path}: {state.error}</div>;
+  return <>{state.lines.map((l, i) => <div key={i} className="t-line">{l || " "}</div>)}</>;
+}
 function NowBlock({ view, lang }) {
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
@@ -1148,41 +1354,101 @@ function NowBlock({ view, lang }) {
   );
 }
 
-function MatrixRain() {
+// cmatrix(1). It runs in the terminal it was started from, not over the whole
+// screen, and it runs until you stop it, because that is what the program does.
+//
+// The canvas is sized from its own box rather than from the viewport: the terminal
+// is a window now, and a window is not the screen.
+function MatrixRain({ onDone, lang }) {
   const canvasRef = React.useRef(null);
+
   React.useEffect(() => {
-    const c = canvasRef.current; if (!c) return;
+    const c = canvasRef.current;
+    if (!c) return;
     const ctx = c.getContext("2d");
-    let drops = [];
-    const resize = () => {
-      c.width = window.innerWidth; c.height = window.innerHeight;
-      const cols = Math.floor(c.width / 14);
-      // Keep existing columns where they are, seed only the ones a widen just added.
-      drops.length = cols;
+    const CELL = 14;
+    const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789{}[]<>=+-*/$#@&%";
+    const pick = () => CHARS[(Math.random() * CHARS.length) | 0];
+    // Canvas needs a real family list, and --mono is where that list lives, so the
+    // rain uses the same face as the terminal instead of its own copy of it.
+    const face = (getComputedStyle(c).getPropertyValue("--mono") || "").trim()
+                 || "ui-monospace, monospace";
+
+    let cols = 0, drops = [], speed = [], box = { width: 0, height: 0 };
+
+    const fit = () => {
+      const r = c.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      c.width = Math.floor(r.width * dpr);
+      c.height = Math.floor(r.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      box = { width: r.width, height: r.height };
+      cols = Math.max(1, Math.floor(r.width / CELL));
+      drops.length = cols; speed.length = cols;
       for (let i = 0; i < cols; i++) {
-        if (drops[i] === undefined) drops[i] = Math.floor(Math.random() * c.height / 14);
+        // Keep the columns that already existed; only seed the ones a widen added.
+        if (drops[i] === undefined) drops[i] = Math.random() * (r.height / CELL);
+        // A little variation per column, or every drop falls in lockstep.
+        if (speed[i] === undefined) speed[i] = 0.45 + Math.random() * 0.75;
       }
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, r.width, r.height);
     };
-    resize();
-    window.addEventListener("resize", resize);
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789{}[]<>=+-*/";
-    let raf;
-    const draw = () => {
-      ctx.fillStyle = "rgba(0,0,0,0.08)";
-      ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = "#39ff14";
-      ctx.font = "14px 'JetBrains Mono', monospace";
-      for (let i = 0; i < drops.length; i++) {
-        ctx.fillText(chars[Math.floor(Math.random() * chars.length)], i * 14, drops[i] * 14);
-        if (drops[i] * 14 > c.height && Math.random() > 0.975) drops[i] = 0;
-        drops[i]++;
-      }
+    fit();
+    // The parent, not the canvas: resizing the canvas would feed its own observer.
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    if (ro && c.parentElement) ro.observe(c.parentElement);
+
+    let raf = 0, last = 0;
+    const draw = (t) => {
       raf = requestAnimationFrame(draw);
+      // requestAnimationFrame is 60fps and the real thing is nowhere near that.
+      if (t - last < 45) return;
+      last = t;
+      ctx.fillStyle = "rgba(0,0,0,0.09)";
+      ctx.fillRect(0, 0, box.width, box.height);
+      ctx.font = CELL + "px " + face;
+      for (let i = 0; i < cols; i++) {
+        const y = drops[i] * CELL;
+        // The head of each trail is nearly white, the rest green. That contrast is
+        // most of what makes it read as rain rather than as noise.
+        ctx.fillStyle = "#d8ffe0";
+        ctx.fillText(pick(), i * CELL, y);
+        ctx.fillStyle = "#2ecc40";
+        ctx.fillText(pick(), i * CELL, y - CELL);
+        if (y > box.height && Math.random() > 0.965) drops[i] = 0;
+        drops[i] += speed[i];
+      }
     };
-    draw();
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+    };
   }, []);
-  return <canvas ref={canvasRef} className="matrix-canvas" />;
+
+  // Any key or click ends it, the way it ends. Capture, so the keystroke does not
+  // also land in the prompt underneath.
+  React.useEffect(() => {
+    const stop = (e) => { e.preventDefault(); e.stopPropagation(); onDone(); };
+    window.addEventListener("keydown", stop, true);
+    window.addEventListener("pointerdown", stop, true);
+    return () => {
+      window.removeEventListener("keydown", stop, true);
+      window.removeEventListener("pointerdown", stop, true);
+    };
+  }, [onDone]);
+
+  return (
+    <div className="matrix" role="presentation">
+      <canvas ref={canvasRef} className="matrix-canvas" />
+      <div className="matrix-hint">
+        {lang === "en" ? "any key to quit" : "아무 키나 누르면 종료"}
+      </div>
+    </div>
+  );
 }
 
 export { TerminalView };

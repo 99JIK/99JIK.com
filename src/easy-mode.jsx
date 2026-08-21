@@ -1,49 +1,15 @@
-// Easy Mode — Notion-style document. Bilingual (ko/en).
+// Easy Mode - Notion-style document. Bilingual (ko/en).
 
 import * as React from "preact/compat";
+import { useLiveChat } from "./chat.jsx";
 
 function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
   const d = window.SITE_DATA;
   const p = d.profile;
   const [chatOpen, setChatOpen] = React.useState(false);
-  const [chatMessages, setChatMessages] = React.useState([]);
-
-  React.useEffect(() => {
-    const onAgent = (e) => {
-      const d = e.detail || {};
-      setChatMessages(m => [
-        ...m.filter(x => !x.pending),
-        {
-          role: "bot",
-          kind: d.kind || "text",
-          text: d.text,
-          fileName: d.fileName,
-          fileType: d.fileType,
-          fileUrl: d.fileUrl,
-          ts: d.timestamp || Date.now(),
-        },
-      ]);
-    };
-    const onTyping = (e) => {
-      setChatMessages(m => {
-        const hasPending = m.some(x => x.pending);
-        if (e.detail.isTyping && !hasPending) return [...m, { role: "bot", text: "…", pending: true }];
-        if (!e.detail.isTyping && hasPending) return m.filter(x => !x.pending);
-        return m;
-      });
-    };
-    window.addEventListener("livechat-agent-message", onAgent);
-    window.addEventListener("livechat-agent-typing", onTyping);
-    return () => {
-      window.removeEventListener("livechat-agent-message", onAgent);
-      window.removeEventListener("livechat-agent-typing", onTyping);
-    };
-  }, []);
-
-  const sendChat = (text) => {
-    setChatMessages(m => [...m, { role: "user", text, ts: Date.now() }]);
-    if (window.LIVE_CHAT && window.LIVE_CHAT.send) window.LIVE_CHAT.send(text);
-  };
+  // Same feed the terminal and the desktop window read, so all three show one
+  // conversation instead of three copies that drift.
+  const { messages: chatMessages, send: sendChat } = useLiveChat({ quiet: chatOpen });
 
   const _about = d.intro.about[lang === "en" ? "en" : "ko"];
   const T = lang === "en" ? {
@@ -56,6 +22,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     now: "Now",
     projects: "Projects",
     pubs: "Publications",
+    patents: "Patents",
     exp: "Experience & Education",
     skills: "Skills",
     role: "Role", location: "Location", email: "Email", github: "GitHub", linkedin: "LinkedIn", til: "TIL", cv: "CV",
@@ -64,7 +31,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     chatAction: "chat live",
     chatTitle: "chat with jeongin",
     chatLive: "online",
-    chatEmpty: "say hi — I'll reply here or on my phone.",
+    chatEmpty: "say hi, I'll reply here or on my phone.",
     chatPlaceholder: "type a message…",
     chatHint: "enter to send · esc to close",
     foot: (name) => `© ${__BUILD_DATE__.slice(0, 4)} ${name} · made in Daegu, KR · updated ${__BUILD_DATE__}`,
@@ -78,6 +45,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
     now: "지금 하는 일",
     projects: "프로젝트",
     pubs: "논문 / 글",
+    patents: "특허",
     exp: "경력 · 학력",
     skills: "스킬",
     role: "역할", location: "위치", email: "이메일", github: "깃허브", linkedin: "링크드인", til: "TIL", cv: "이력서",
@@ -163,12 +131,6 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
         <H2>{T.now}</H2>
         <EasyCalendar lang={lang} />
 
-        {d.now.length > 0 && (
-          <>
-            <H2>{lang === "en" ? "Highlights" : "요즘 관심사"}</H2>
-            <ul className="easy-bullets">{d.now.map((n, i) => <li key={i}>{n}</li>)}</ul>
-          </>
-        )}
 
         <H2>{T.projects} <span className="easy-h-en">({d.projects.length})</span></H2>
         <div className="easy-projects">
@@ -192,12 +154,28 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
           {d.publications.map((pb, i) => (
             <div key={i} className="easy-pub">
               <span className="easy-pub-y">{pb.year}</span>
-              <span className="easy-pub-v">{pb.venue}</span>
-              <span className="easy-pub-t">{pb.title}</span>
-              <span className="easy-pub-r">({pb.role})</span>
+              <span className="easy-pub-v">{pb.venue}{pb.pages ? `, pp.${pb.pages}` : ""}</span>
+              <span className="easy-pub-t">{lang === "en" ? pb.title_en : pb.title_ko}</span>
+              <span className="easy-pub-r">{pb.authors}</span>
             </div>
           ))}
         </div>
+
+        {d.patents && d.patents.length > 0 && (
+          <>
+            <H2>{T.patents}</H2>
+            <div className="easy-pubs">
+              {d.patents.map((x, i) => (
+                <div key={i} className="easy-pub">
+                  <span className="easy-pub-y">{x.year}</span>
+                  <span className="easy-pub-v">{lang === "en" ? x.status_en : x.status_ko}</span>
+                  <span className="easy-pub-t">{lang === "en" ? x.title_en : x.title_ko}</span>
+                  <span className="easy-pub-r">{lang === "en" ? x.holder_en : x.holder_ko}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <H2>{T.exp}</H2>
         <div className="easy-exp">
@@ -206,7 +184,7 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
               <div className="easy-exp-when">{e.when}</div>
               <div>
                 <div className="easy-exp-what">{lang === "en" ? e.what_en : e.what_ko}</div>
-                <div className="easy-dim">{lang === "en" ? e.what_ko : e.what_en} — {lang === "en" ? e.where_ko : e.where_en}</div>
+                <div className="easy-dim">{lang === "en" ? e.what_ko : e.what_en} · {lang === "en" ? e.where_ko : e.where_en}</div>
               </div>
             </div>
           ))}
@@ -288,8 +266,14 @@ function EasyChat({ T, messages, onSend, onClose }) {
         {messages.map((m, i) => {
           const k = m.kind || "text";
           const bubbleClass = "easy-chat-bubble" + (k === "image" ? " is-image" : "");
+          // A run from one sender is one turn: the bubbles tuck together and only
+          // the last of the run keeps the pointed corner, the way a tail works.
+          const cont = i > 0 && messages[i - 1].role === m.role;
+          const tail = i === messages.length - 1 || messages[i + 1].role !== m.role;
           return (
-            <div key={i} className={"easy-chat-msg role-" + m.role + (m.pending ? " pending" : "")}>
+            <div key={i} className={"easy-chat-msg role-" + m.role
+                          + (m.pending ? " pending" : "")
+                          + (cont ? " cont" : "") + (tail ? " tail" : "")}>
               <div className={bubbleClass}>
                 {k === "image" ? (
                   <a href={m.fileUrl} target="_blank" rel="noreferrer" className="easy-chat-img-link">
@@ -354,7 +338,8 @@ function EasyCalendar({ lang }) {
     const k = window.CALENDAR.fmtDay(e._start, lang);
     (groups[k] = groups[k] || []).push(e);
   });
-  const tagColor = { lab: "var(--t-cyan)", focus: "var(--t-accent)", teach: "var(--t-yellow)", life: "#c678dd", other: "var(--t-muted)" };
+  const tagColor = { lab: "var(--t-cyan)", focus: "var(--t-accent)", teach: "var(--t-yellow)",
+                    "class": "var(--t-green)", life: "#c678dd", other: "var(--t-muted)" };
   return (
     <div className="easy-cal">
       {Object.entries(groups).map(([day, evs]) => (

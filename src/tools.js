@@ -285,20 +285,97 @@
   };
 
   // ── xdg-open ──────────────────────────────────────────────────────────────
+  // Real xdg-open asks the desktop which application handles a thing. So does this
+  // one: a URL goes to the browser, the CV to the PDF viewer, the playlist to the
+  // player. The `link` fallback is for when there is no desktop to ask, which is
+  // every screen too small to put windows on.
+  function handlerFor(path, node) {
+    if (node && node.live === "playlist") return { app: "music" };
+    if (/(^|\/)cv$/.test(path) || /\.pdf$/i.test(path)) return { app: "cv" };
+    if (node && node.type === "link" && /^https?:\/\//.test(node.target || "")) {
+      return { app: "browser", arg: node.target };
+    }
+    if (/\.desktop$/.test(path) && node && node.type === "file") {
+      const exec = (node.content || []).find((l) => l.startsWith("Exec="));
+      if (exec) return { app: exec.slice(5).trim() };
+    }
+    // Anything else readable opens in the viewer, which is what a desktop does
+    // with a text file. Directories are for `cd`, not for opening.
+    if (node && node.type === "file") return { app: "viewer", arg: path };
+    return null;
+  }
+
   C["xdg-open"] = {
     usage: "xdg-open <path|url>",
-    hint: { ko: "링크 열기 (xdg-open ~/til)", en: "open a link (xdg-open ~/til)" },
+    hint: { ko: "기본 앱으로 열기 (xdg-open ~/cv)", en: "open with its application (xdg-open ~/cv)" },
     run: (args) => {
       const a = args[0];
       if (!a) return [err("xdg-open: missing argument")];
-      if (/^https?:\/\//.test(a)) return [{ kind: "link", href: a, text: a }];
-      const { node } = FS().resolve(a);
+      if (/^https?:\/\//.test(a)) {
+        return [{ kind: "mode", action: "open-window", app: "browser", arg: a },
+                { kind: "link", href: a, text: a }];
+      }
+      const { path, node } = FS().resolve(a);
       if (!node) return [err("xdg-open: " + a + ": No such file or directory")];
+      const h = handlerFor(path, node);
+      if (h) {
+        const out = [{ kind: "mode", action: "open-window", app: h.app, arg: h.arg }];
+        if (node.type === "link") out.push({ kind: "link", href: node.target, text: node.target });
+        return out;
+      }
       if (node.type === "link") return [{ kind: "link", href: node.target, text: node.target }];
       return [err("xdg-open: " + a + ": no application knows how to open this")];
     },
   };
   C.open = { hidden: true, usage: "open <path|url>", hint: C["xdg-open"].hint, run: C["xdg-open"].run };
+
+  // ── mpv ──────────────────────────────────────────────────────────
+  // Plays the one thing on this machine that is playable: the playlist. Anything
+  // else gets the error real mpv gives, because nothing else here has audio.
+  // --playlist-start is 0-based in mpv, so it is 0-based here too.
+  function playlistNode(a) {
+    if (!a) return null;
+    const { node } = FS().resolve(a);
+    return node && node.live === "playlist" ? node : null;
+  }
+
+  C.mpv = {
+    usage: "mpv [--playlist-start=N] <file.m3u>",
+    hint: { ko: "플레이리스트 재생 (계속 틀어둔 채로 명령 입력 가능)", en: "play a playlist; it keeps going while you type" },
+    run: (args, stdin, lang) => {
+      let start = 0;
+      const rest = [];
+      for (const a of args) {
+        const m = /^--playlist-start=(\d+)$/.exec(a);
+        if (m) { start = parseInt(m[1], 10); continue; }
+        if (a.startsWith("-")) return [err("mpv: Error parsing option " + a + ": option not found.")];
+        rest.push(a);
+      }
+      const target = rest[0];
+      if (!target) {
+        return [
+          T("Usage:   mpv [options] [url|path/]filename"),
+          T(""),
+          T("Options: --playlist-start=<n>   start at track n (0-based)"),
+          T(lang === "en"
+            ? "Try:     mpv ~/.midnight/playlist.m3u"
+            : "예:      mpv ~/.midnight/playlist.m3u", { dim: true }),
+        ];
+      }
+      const node = playlistNode(target);
+      if (!node) {
+        const { node: any } = FS().resolve(target);
+        if (!any) return [err("mpv: " + target + ": No such file or directory")];
+        // Real mpv on a text file: it opens it, finds no stream, and gives up.
+        return [
+          err("[lavf] Format detection failed."),
+          err("Failed to recognize file format."),
+        ];
+      }
+      return [{ kind: "player", start }];
+    },
+  };
+  C.mplayer = { hidden: true, usage: "mplayer <file.m3u>", hint: C.mpv.hint, run: C.mpv.run };
 
   // ── vi ────────────────────────────────────────────────────────────────────
   C.vi = {

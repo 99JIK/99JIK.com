@@ -1,4 +1,4 @@
-// Google Analytics 4 loader. ID lives in SITE_DATA.site.gaTagId — empty string disables.
+// Google Analytics 4 loader. ID lives in SITE_DATA.site.gaTagId - empty string disables.
 // Skips entirely when DNT is on or in localhost dev (so my own visits don't pollute).
 (function () {
   const id = window.SITE_DATA && window.SITE_DATA.site && window.SITE_DATA.site.gaTagId;
@@ -7,7 +7,7 @@
   // Respect Do Not Track.
   if (navigator.doNotTrack === "1" || window.doNotTrack === "1") return;
 
-  // Skip on localhost / dev — don't taint my own analytics.
+  // Skip on localhost / dev - don't taint my own analytics.
   const host = location.hostname;
   if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")) return;
 

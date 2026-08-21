@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Build script — bundles src/main.jsx with esbuild, copies static assets to dist/.
+// Build script: bundles src/main.jsx with esbuild, copies static assets to dist/.
 // Run: `npm run build` (one-shot) or `npm run dev` (watch).
 
 import { build, context } from "esbuild";
@@ -12,6 +12,8 @@ const OUT = "dist";
 // Injected into the bundle so the footer year and "updated" date track the deploy
 // instead of being hand-maintained in data.js.
 const BUILD_DATE = new Date().toISOString().slice(0, 10);
+
+
 
 const esbuildOpts = {
   entryPoints: ["src/main.jsx"],
@@ -29,7 +31,9 @@ const esbuildOpts = {
     "react/jsx-runtime": "preact/jsx-runtime",
   },
   loader: { ".jsx": "jsx", ".js": "js" },
-  define: { __BUILD_DATE__: JSON.stringify(BUILD_DATE) },
+  define: {
+    __BUILD_DATE__: JSON.stringify(BUILD_DATE),
+  },
   logLevel: "info",
 };
 
@@ -71,16 +75,20 @@ function fallbackHtml() {
 
     `<h2>연구 관심사 / Research interests</h2>`,
     li(D.research.map(r =>
-      `<b>${esc(r.tag)}</b> ${esc(r.title_ko)} (${esc(r.title_en)}) &mdash; ${esc(r.blurb_ko)} ${esc(r.blurb_en)}`)),
+      `<b>${esc(r.tag)}</b> ${esc(r.title_ko)} (${esc(r.title_en)}): ${esc(r.blurb_ko)} ${esc(r.blurb_en)}`)),
 
     `<h2>프로젝트 / Projects</h2>`,
     li(D.projects.map(x => {
       const url = x.url || `https://github.com/${D.site.github}/${x.slug}`;
-      return `<a href="${esc(url)}">${esc(x.title_ko)} (${esc(x.title_en)})</a>, ${esc(x.year)} &mdash; ${esc(x.summary_ko)} ${esc(x.summary_en)}`;
+      return `<a href="${esc(url)}">${esc(x.title_ko)} (${esc(x.title_en)})</a>, ${esc(x.year)}: ${esc(x.summary_ko)} ${esc(x.summary_en)}`;
     })),
 
     `<h2>논문 / Publications</h2>`,
-    li(D.publications.map(x => `${esc(x.year)} ${esc(x.venue)} &mdash; ${esc(x.title)} (${esc(x.role)})`)),
+    li(D.publications.map(x => `${esc(x.year)} ${esc(x.venue)}: ${esc(x.title_ko)} (${esc(x.title_en)}) - ${esc(x.role)}`)),
+
+    `<h2>특허 / Patents</h2>`,
+    li((D.patents || []).map(x =>
+      `${esc(x.year)} ${esc(x.title_ko)} (${esc(x.title_en)}) - ${esc(x.status_ko)}`)),
 
     `<h2>경력 · 학력 / Experience</h2>`,
     li(D.experience.map(e => `${esc(e.when)} ${esc(e.what_ko)} (${esc(e.what_en)}), ${esc(e.where_ko)}`)),

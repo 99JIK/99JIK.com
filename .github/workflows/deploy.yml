@@ -29,6 +29,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          # /var/log/deploy.log shows real commit history, which a depth-1 clone
+          # would flatten to a single entry.
+          fetch-depth: 20
 
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +46,14 @@ jobs:
           else
             npm install --no-audit --no-fund
           fi
+
+      # The browser reads the calendar live through the Calendar API. This only
+      # refreshes the snapshot that ships in the build as a fallback, and it is never
+      # committed, so it cannot pile up bot commits or conflict with anything.
+      # Google being briefly unreachable is no reason to block a deploy.
+      - name: Refresh calendar snapshot
+        run: node scripts/fetch-calendar.mjs
+        continue-on-error: true
 
       - name: Check
         run: npm run check
