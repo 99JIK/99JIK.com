@@ -636,7 +636,7 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
               : win.app === "music" ? <MusicPlayer lang={lang} wm={wm} />
               : win.app === "cv" ? <PdfViewer key={win.nonce} lang={lang} wm={wm} path={win.arg} />
               : win.app === "files" ? <Files lang={lang} wm={wm} onOpen={open} />
-              : win.app === "calendar" ? <CalendarApp lang={lang} wm={wm} />
+              : win.app === "calendar" ? <CalendarApp lang={lang} wm={wm} onOpen={open} />
               : win.app === "viewer" ? <Viewer key={win.nonce} lang={lang} wm={wm} path={win.arg} />
               : win.app === "settings"
                 ? <Settings lang={lang} wm={wm} theme={theme} onTheme={onTheme} onLang={onLang}

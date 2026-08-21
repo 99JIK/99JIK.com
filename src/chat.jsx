@@ -76,6 +76,18 @@ window.addEventListener("livechat-agent-typing", (e) => {
 // about a message already on screen is noise.
 export function hushChat(on) { CHAT.hush(on); }
 
+// For anything that composes a message without being a chat view. The calendar's
+// booking form is one: the request goes down the same pipe and lands in the same
+// conversation, so the reply arrives where the visitor expects it.
+export function sendChat(text) { CHAT.send(text); }
+
+// Whether there is anything to send into. Crisp is a third-party script and ad
+// blockers stop it, in which case the form has to offer mail instead of pretending
+// the message went somewhere.
+export function chatReady() {
+  return !!(window.LIVE_CHAT && window.LIVE_CHAT.enabled && window.$crisp);
+}
+
 export function useLiveChat({ quiet } = {}) {
   const [, bump] = React.useState(0);
   React.useEffect(() => CHAT.sub(() => bump((n) => n + 1)), []);

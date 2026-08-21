@@ -735,6 +735,31 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
+check("booking asks, and says that it is asking", () => {
+  // Nothing on this page can write to the owner's calendar: the browser key is
+  // read-only and creating an event would need OAuth from him, not from a visitor.
+  // So the form must never read as a confirmed booking.
+  const c = readFileSync(new URL("../src/cal.jsx", import.meta.url), "utf8");
+  for (const word of ["요청", "request"]) {
+    if (!c.includes(word)) throw new Error(`the form never calls it a ${word}`);
+  }
+  if (!/확정된 예약이 아니라/.test(c)) throw new Error("the result does not say it is not a booking");
+
+  // Slots come from the same events the grid is drawn from, so an offered slot is
+  // one that is actually free.
+  if (!/function freeSlots\(day, events\)/.test(c)) throw new Error("slots are not computed from the calendar");
+  if (!/if \(s <= now\) continue/.test(c)) throw new Error("the past is bookable");
+  if (!/dow === 0 \|\| dow === 6/.test(c)) throw new Error("weekends are offered");
+
+  // It goes down the chat pipe, and says so when that pipe is missing rather than
+  // swallowing the message.
+  if (!/chatReady\(\)/.test(c)) throw new Error("the form does not check the channel exists");
+  if (!/mailto:/.test(c)) throw new Error("there is no fallback when chat is blocked");
+  const chat = readFileSync(new URL("../src/chat.jsx", import.meta.url), "utf8");
+  if (!/export function sendChat/.test(chat)) throw new Error("chat.jsx does not expose sending");
+  return true;
+});
+
 check("minimised windows stay mounted", () => {
   // Filtering them out of the render unmounts their iframes, which stops whatever
   // was playing. They are moved off-screen instead.
