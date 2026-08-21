@@ -690,11 +690,11 @@ window.SITE_DATA = {
     about: {  // Easy mode callout box (under the title)
       ko: {
         primary: "안녕하세요. 경북대학교 컴퓨터학부에서 소프트웨어 테스팅을 공부하고 있어요.",
-        secondary: "Software in the Loop(SIL), LLM/SLM 기반 테스팅에 관심이 많습니다.",
+        secondary: "LLM 기반 테스트 생성, SIL 검증 환경, 산업 공정 데이터 예측 모델링에 관심이 있습니다.",
       },
       en: {
         primary: "Hi, I study software testing at Kyungpook National University.",
-        secondary: "My work lives at the intersection of software testing and language models, currently focused on SIL and LLM/SLM-based testing.",
+        secondary: "LLM-based test generation, software-in-the-loop verification environments, and predictive modelling on industrial process data.",
       },
     },
     tagline: {

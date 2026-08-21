@@ -98,50 +98,12 @@ function BootSequence({ onDone }) {
   );
 }
 
-function Tweaks({ state, set, onClose }) {
-  return (
-    <div className="tweaks">
-      <h3>Tweaks</h3>
-      <div className="tweaks-row">
-        <span>Theme</span>
-        <select value={state.theme} onChange={e => set({ theme: e.target.value })}>
-          {Object.entries(window.THEMES).map(([k, v]) => <option key={k} value={k}>{v.label_ko}</option>)}
-        </select>
-      </div>
-      <div className="tweaks-row">
-        <span>Default mode</span>
-        <select value={state.defaultMode} onChange={e => set({ defaultMode: e.target.value })}>
-          <option value="terminal">Terminal</option>
-          <option value="easy">Easy</option>
-        </select>
-      </div>
-      <div style={{ marginTop: 8, fontSize: 10, color: "var(--t-muted)" }}>
-        터미널에서 <code>theme phosphor</code>, <code>easy</code> 로도 가능
-      </div>
-      <div style={{ textAlign: "right", marginTop: 6 }}>
-        <button onClick={onClose}>close</button>
-      </div>
-    </div>
-  );
-}
-
-// `?view=easy` is the link to hand to someone who should not meet a terminal:
-// a recruiter, a professor, an application form. It beats the stored preference,
-// so the link means the same thing for everyone who opens it.
-function viewFromUrl() {
-  try {
-    const v = new URLSearchParams(location.search).get("view");
-    return (v === "easy" || v === "terminal") ? v : null;
-  } catch { return null; }
-}
-
 const BOOT_KEY = "99jik:booted";
 const BOOT_VERSION = "2";   // bumped: the boot now hands over to a desktop
 
 function App() {
   const [tweaks, setTweaks] = React.useState(window.PREFS.load);
   const [mode, setMode] = React.useState(() => viewFromUrl() || window.PREFS.load().defaultMode);
-  const [showTweaks, setShowTweaks] = React.useState(false);
   const [bootDone, setBootDone] = React.useState(() => {
     // Reduced motion skips the boot log entirely: it is 28 timed lines of pure motion.
     if (window.prefersReducedMotion()) return true;
@@ -161,7 +123,6 @@ function App() {
     setTweaks(next);
     window.PREFS.save(next);
     if (patch.theme) window.applyTheme(patch.theme);
-    try { window.parent.postMessage({ type: "__edit_mode_set_keys", edits: patch }, "*"); } catch {}
   };
 
   React.useEffect(() => { window.applyTheme(tweaks.theme); }, []);
@@ -180,17 +141,6 @@ function App() {
       history.replaceState(null, "", url.pathname + url.search + url.hash);
     } catch {}
   }, [mode, tweaks.defaultMode]);
-
-  React.useEffect(() => {
-    const onMsg = (e) => {
-      const d = e.data || {};
-      if (d.type === "__activate_edit_mode") setShowTweaks(true);
-      if (d.type === "__deactivate_edit_mode") setShowTweaks(false);
-    };
-    window.addEventListener("message", onMsg);
-    try { window.parent.postMessage({ type: "__edit_mode_available" }, "*"); } catch {}
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
 
   // `reboot` easter egg → replay the boot sequence on demand.
   React.useEffect(() => {
@@ -212,7 +162,6 @@ function App() {
           </Desktop>
         : <EasyMode onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
       }
-      {showTweaks && <Tweaks state={tweaks} set={setTw} onClose={() => setShowTweaks(false)} />}
     </>
   );
 }

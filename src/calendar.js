@@ -1,5 +1,8 @@
-// Calendar loader. Fetches public/calendar.json (rebuilt daily by GH Actions from ICAL_URL).
-// Gracefully falls back to an embedded mock so local dev always works.
+// Calendar loader. Reads the Google Calendar API directly when a browser key is
+// configured, falls back to the public/calendar.json snapshot the deploy refreshes,
+// and falls back again to the mock below so local development always has something.
+// The mock is deliberately generic: it stands in for a calendar, and inventing
+// specific work here would put words in the owner's mouth.
 (function () {
   const MOCK = {
     updated: new Date().toISOString(),
@@ -9,11 +12,11 @@
       { start: isoAt(0, 14, 0),  end: isoAt(0, 15, 0),  title: "Paper reading: ICSE'25",   location: "zoom",           tag: "lab" },
       { start: isoAt(0, 19, 0),  end: isoAt(0, 20, 30), title: "Gym",                       location: "",               tag: "life" },
       { start: isoAt(1,  9, 30), end: isoAt(1, 11, 0),  title: "Lab seminar",               location: "IT-3 507",       tag: "lab" },
-      { start: isoAt(1, 13, 0),  end: isoAt(1, 14, 0),  title: "Writing block: LLM oracle",location: "",               tag: "focus" },
+      { start: isoAt(1, 13, 0),  end: isoAt(1, 14, 0),  title: "Writing block",             location: "",               tag: "focus" },
       { start: isoAt(2, 15, 0),  end: isoAt(2, 16, 30), title: "Mentoring: undergrad",     location: "online",         tag: "teach" },
       { start: isoAt(3, 11, 0),  end: isoAt(3, 12, 0),  title: "TIL review",                location: "",               tag: "focus" },
       { start: isoAt(4, 18, 0),  end: isoAt(4, 21, 0),  title: "Dinner w/ lab",             location: "북구 복현동",     tag: "life" },
-      { start: isoAt(6, 10, 0),  end: isoAt(6, 18, 0),  title: "Deep work: SLM fuzzer",    location: "",               tag: "focus" },
+      { start: isoAt(6, 10, 0),  end: isoAt(6, 18, 0),  title: "Deep work",                 location: "",               tag: "focus" },
     ],
   };
 
