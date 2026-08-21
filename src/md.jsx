@@ -14,6 +14,10 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const QUOTE = /^>\s?(.*)$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const FENCE = /^\s*```(.*)$/;
+// A row is anything with a pipe in it; the separator is what turns a run of rows
+// into a table, which is how GitHub decides too.
+const ROW = /^\s*\|(.+)\|\s*$/;
+const SEP = /^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/;
 
 // Inline marks, longest-first so `**` is never read as two `*`. Each entry is a
 // pattern with one capture group and the node it becomes.
@@ -67,6 +71,7 @@ function marks(text, key) {
 // run: this is a preview, not a spec-complete parser.
 export function Markdown({ lines, className }) {
   const src = Array.isArray(lines) ? lines : String(lines || "").split(String.fromCharCode(10));
+  const cells = (line) => ROW.exec(line)[1].split("|").map((c) => c.trim());
   const out = [];
   let para = [], list = null, quote = null, fence = null, key = 0;
 
@@ -90,8 +95,8 @@ export function Markdown({ lines, className }) {
   };
   const flushAll = () => { flushPara(); flushList(); flushQuote(); };
 
-  for (const raw of src) {
-    const line = raw === undefined ? "" : String(raw);
+  for (let n = 0; n < src.length; n++) {
+    const line = src[n] === undefined ? "" : String(src[n]);
 
     // A fence swallows everything until it closes, marks and all.
     if (fence) {
@@ -106,6 +111,33 @@ export function Markdown({ lines, className }) {
     if (open) { flushAll(); fence = { body: [] }; continue; }
 
     if (!line.trim()) { flushAll(); continue; }
+
+    // Tables need one line of lookahead: a row on its own is just a line with
+    // pipes in it, and only the separator underneath makes it a header. This is why
+    // the loop is indexed rather than for-of: it has to look ahead and then skip.
+    if (ROW.test(line) && SEP.test(String(src[n + 1] || ""))) {
+      flushAll();
+      const head = cells(line);
+      const align = cells(String(src[n + 1])).map((c) =>
+        (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : null));
+      const body = [];
+      let k = n + 2;
+      while (k < src.length && ROW.test(String(src[k] || ""))) { body.push(cells(String(src[k]))); k++; }
+      n = k - 1;
+      out.push(
+        <table key={"tb" + key++} className="md-table">
+          <thead><tr>{head.map((h, i) => (
+            <th key={i} style={align[i] ? { textAlign: align[i] } : null}>{inline(h, "th" + key + i)}</th>
+          ))}</tr></thead>
+          <tbody>{body.map((r, ri) => (
+            <tr key={ri}>{r.map((c, ci) => (
+              <td key={ci} style={align[ci] ? { textAlign: align[ci] } : null}>{inline(c, "td" + key + ri + ci)}</td>
+            ))}</tr>
+          ))}</tbody>
+        </table>
+      );
+      continue;
+    }
 
     if (RULE.test(line)) { flushAll(); out.push(<hr key={"h" + key++} />); continue; }
 

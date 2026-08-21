@@ -352,6 +352,7 @@
                     "  work.md          working principles, kept out of the lab notes",
                     "  social.md        how the writing lands, mail included",
                     "",
+                    "",
                     "One file per domain, listed in src/data.js under notes.memo:",
                     ...(D.notes.memo.length
                       ? D.notes.memo.map(m => `  ${m.file.padEnd(16)} ${m.title}`)
@@ -373,10 +374,7 @@
                 // same subject and do not get read at the same time.
                 ...Object.fromEntries(D.notes.memo.map((m, i) => [
                   m.file,
-                  {
-                    type: "file", mtime: dayAgo(i),
-                    content: ["# " + m.title, "", ...m.notes.map(n => "- " + n)],
-                  },
+                  { type: "file", mtime: dayAgo(i), content: m.md },
                 ])),
                 "til.log": {
                   // Generated on read from the live feed, so it reports zero bytes

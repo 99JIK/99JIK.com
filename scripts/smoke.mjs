@@ -407,6 +407,32 @@ check("a run of messages from one sender is labelled once", () => {
   return true;
 });
 
+check("markdown tables survive the renderer", () => {
+  // The domain notes are mostly tables. Without table support they came out as
+  // lines of pipes, which is worse than not rendering at all.
+  const md = readFileSync(new URL("../src/md.jsx", import.meta.url), "utf8");
+  if (!md.includes("md-table")) throw new Error("the renderer has no table branch");
+  // A row is only a header once the separator underneath says so, which needs one
+  // line of lookahead, which is why the loop must be indexed.
+  if (!/for \(let n = 0; n < src\.length; n\+\+\)/.test(md)) {
+    throw new Error("the parser cannot look ahead, so tables cannot be detected");
+  }
+  if (md.includes("src.indexOf(raw)")) {
+    throw new Error("rows are located by value, which breaks on two identical rows");
+  }
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const rule = /\.md-table \{([^}]*)\}/.exec(css);
+  if (!rule) throw new Error("no .md-table rule");
+  // Wide tables scroll inside their own box, like every other wide thing here.
+  if (!/overflow-x:\s*auto/.test(rule[1])) throw new Error("a wide table would push the window sideways");
+
+  // ...and the notes that need them actually have them.
+  const D = window.SITE_DATA;
+  const withTables = D.notes.memo.filter(m => m.md.some(l => /^\s*\|/.test(l)));
+  if (withTables.length < 3) throw new Error("the domain notes lost their tables");
+  return true;
+});
+
 check("markdown is rendered as nodes, never as HTML", () => {
   // A note that contains a tag has to come out as that tag's text. Building an
   // HTML string and assigning it would make the preview an injection point.
@@ -858,9 +884,9 @@ check("note files are data-driven, not hand-written fiction", () => {
   for (const m of D.notes.memo) {
     const f = dir.children[m.file];
     if (!f) throw new Error(`${m.file} is in notes.memo but not in /home/memo`);
-    if (f.content.slice(2).length !== m.notes.length) {
-      throw new Error(`${m.file} has ${f.content.slice(2).length} lines for ${m.notes.length} notes`);
-    }
+    if (f.content !== m.md) throw new Error(`${m.file} does not read from data.js`);
+    if (!m.md.length) throw new Error(`${m.file} is empty`);
+    if (!m.title) throw new Error(`${m.file} has no title for the README`);
   }
   for (const name of Object.keys(dir.children)) {
     // README and til.log are fixtures, work.md has its own data.js field; every
