@@ -735,6 +735,32 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
+check("desktop icons wrap by height", () => {
+  // One fixed column needed 826px of height for nine entries, so a 1366x768 laptop
+  // cut the last three off with no way to reach them. They flow down and then across.
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const r = css.match(/\.desk-icons \{([\s\S]*?)\}/);
+  if (!r) throw new Error("no .desk-icons rule");
+  const body = r[1];
+  if (!/grid-auto-flow: column/.test(body)) throw new Error("icons still run in one column");
+  if (!/grid-template-rows: repeat\(auto-fill/.test(body)) throw new Error("row count is not derived from height");
+  if (!/bottom:/.test(body)) throw new Error("nothing stops the icons at the bottom of the screen");
+  // Spanning the desktop means it would otherwise eat the wallpaper's right-click.
+  if (!/pointer-events: none/.test(body)) throw new Error("the icon layer swallows the wallpaper menu");
+  if (!/\.desk-icon \{ pointer-events: auto/.test(css)) throw new Error("icons cannot be clicked");
+  // A label that wraps to two lines pushes its neighbours out of their rows.
+  const lab = css.match(/\.desk-icon-label \{([\s\S]*?)\}/);
+  if (!lab || !/white-space: nowrap/.test(lab[1])) throw new Error("labels can wrap and break the grid");
+
+  // Nine entries must fit at the smallest desktop-mode viewport.
+  const ROW = 82, GAP = 6, TOP = 22, N = 9;
+  for (const [w, h] of [[1366, 768], [1280, 720], [900, 600]]) {
+    const rows = Math.max(1, Math.floor((h - TOP - (0.12 * h + 180) + GAP) / (ROW + GAP)));
+    if (rows * Math.ceil(N / rows) < N) throw new Error(w + "x" + h + " cannot show every icon");
+  }
+  return true;
+});
+
 check("public/home mirrors into the filesystem", () => {
   // The build injects __DROP__; loaded bare it is undefined and the tree is untouched,
   // which is what every other check in this file has been running against.

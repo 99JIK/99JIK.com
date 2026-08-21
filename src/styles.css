@@ -803,7 +803,20 @@ body {
   font-size: 11px; color: var(--t-muted); letter-spacing: 2px;
 }
 
-.desk-icons { position: absolute; top: 22px; left: 22px; display: grid; gap: 6px; }
+.desk-icons {
+  position: absolute; top: 22px; left: 22px; right: 22px;
+  /* The clock sits bottom-left, so the icons stop above it rather than landing on
+     top of it. 12vh is where the clock starts; the rest is the block it occupies. */
+  bottom: calc(12vh + 180px);
+  display: grid; gap: 6px 8px;
+  grid-template-rows: repeat(auto-fill, 82px);
+  grid-auto-flow: column; grid-auto-columns: 78px;
+  justify-content: start; align-content: start;
+  /* The container spans the desktop now, so it must not swallow the right-click
+     that opens the wallpaper menu. Only the icons themselves take the pointer. */
+  pointer-events: none;
+}
+.desk-icon { pointer-events: auto; }
 .desk-icon {
   display: grid; justify-items: center; gap: 5px; width: 78px; padding: 8px 4px;
   background: transparent; border: 1px solid transparent; border-radius: 5px;
@@ -817,7 +830,10 @@ body {
   color: var(--t-accent);
 }
 .desk-icon:hover .desk-icon-glyph { border-color: var(--t-accent); }
-.desk-icon-label { text-shadow: 0 1px 3px var(--t-bg); }
+.desk-icon-label {
+  text-shadow: 0 1px 3px var(--t-bg);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .desk-note {
   position: absolute; left: 50%; top: 32px; transform: translateX(-50%);
