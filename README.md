@@ -52,12 +52,14 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 
 ### 키보드
 
-`Ctrl+Alt` 네임스페이스입니다. **Alt+Tab은 쓸 수 없습니다.** 운영체제가 페이지보다 먼저 가로챕니다.
+`Ctrl+Alt` 네임스페이스입니다. **Alt+Tab과 Ctrl+Alt+Tab은 쓸 수 없습니다.** 운영체제가 페이지보다 먼저 가로챕니다. 창 순환은 백틱 키를 씁니다.
+
+판정은 `e.key`가 아니라 **`e.code`**(물리 키)로 합니다. 한글 자판이 켜져 있으면 문자 키의 `e.key`가 자모로 오기 때문에 `Ctrl+Alt+M` 같은 것이 아무것도 매치하지 않았습니다.
 
 | 키 | 동작 |
 |---|---|
 | `Ctrl+Alt+T/F/B/C/M/V/,` | 앱 실행 또는 포커스 |
-| `Ctrl+Alt+Tab` | 창 순환 (`Shift`로 역순) |
+| `Ctrl+Alt+` `` ` `` | 창 순환 (`Shift`로 역순) |
 | `Ctrl+Alt+↑ / ↓` | 최대화 / 복원 후 최소화 |
 | `Ctrl+Alt+Shift+←/→` | 반쪽 스냅 |
 | `Ctrl+Alt+←/→`, `1..4` | 작업공간 이동 |

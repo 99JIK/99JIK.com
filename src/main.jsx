@@ -98,6 +98,16 @@ function BootSequence({ onDone }) {
   );
 }
 
+// `?view=easy` is the link to hand to someone who should not meet a terminal:
+// a recruiter, a professor, an application form. It beats the stored preference,
+// so the link means the same thing for everyone who opens it.
+function viewFromUrl() {
+  try {
+    const v = new URLSearchParams(location.search).get("view");
+    return (v === "easy" || v === "terminal") ? v : null;
+  } catch { return null; }
+}
+
 const BOOT_KEY = "99jik:booted";
 const BOOT_VERSION = "2";   // bumped: the boot now hands over to a desktop
 

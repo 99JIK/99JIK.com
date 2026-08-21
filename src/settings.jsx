@@ -31,11 +31,13 @@ export function Settings({ lang, wm, theme, onTheme, onLang, onReset, apps }) {
   const themes = window.THEMES || {};
 
   const KEYS = [
-    [T.launch, Object.keys(apps || {}).map((a) => ({
+    // Only the apps that have a shortcut. The viewer is opened by opening a file,
+    // so it has none, and listing it printed "Ctrl+Alt+undefined".
+    [T.launch, Object.keys(apps || {}).filter((a) => apps[a].key).map((a) => ({
       k: "Ctrl+Alt+" + apps[a].key, v: lang === "en" ? apps[a].en : apps[a].ko,
     }))],
     [T.wm, [
-      { k: "Ctrl+Alt+Tab", v: lang === "en" ? "cycle windows" : "창 순환" },
+      { k: "Ctrl+Alt+`", v: lang === "en" ? "cycle windows" : "창 순환" },
       { k: "Ctrl+Alt+↑", v: lang === "en" ? "maximise" : "최대화" },
       { k: "Ctrl+Alt+↓", v: lang === "en" ? "restore, then minimise" : "복원, 다시 누르면 최소화" },
       { k: "Ctrl+Alt+Shift+←/→", v: lang === "en" ? "snap to half" : "반쪽으로 스냅" },

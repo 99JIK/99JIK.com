@@ -624,6 +624,44 @@ check("a window that throws does not take the page with it", () => {
   return true;
 });
 
+check("shortcuts are keyed to the physical key", () => {
+  // e.key is what the input method produced. With a Korean layout the letter keys
+  // report jamo, so every Ctrl+Alt+<letter> matched nothing at all.
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+  const fn = d.slice(d.indexOf("const onKey = (e) =>"), d.indexOf('window.addEventListener("keydown", onKey)'))
+    // The comments in there explain why e.key is wrong, so they must not count.
+    .split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith("//")).join(" ");
+  if (/e\.key/.test(fn)) throw new Error("the handler reads e.key again");
+  if (!/const c = e\.code/.test(fn)) throw new Error("the handler does not read e.code");
+  // Ctrl+Alt+Tab never reaches the page; Windows takes it.
+  if (/=== "Tab"/.test(fn)) throw new Error("Ctrl+Alt+Tab is bound again, and the OS eats it");
+
+  const apps = d.slice(d.indexOf("export const APPS"), d.indexOf("const APP_KEYS"));
+  // The whole line, not a greedy slice of it: `key:` comes before `code:` and a
+  // greedy match ends at the first and never sees the second.
+  for (const line of apps.split(String.fromCharCode(10))) {
+    const m = /^  (\w+):.*key: "[^"]+"/.exec(line);
+    if (!m) continue;
+    if (!/code: "\w+"/.test(line)) throw new Error(`${m[1]} has a key label but no physical code`);
+  }
+  // A settings row for an app with no shortcut printed "Ctrl+Alt+undefined".
+  const set = readFileSync(new URL("../src/settings.jsx", import.meta.url), "utf8");
+  if (!/filter\(\(a\) => apps\[a\]\.key\)/.test(set)) {
+    throw new Error("the settings list includes apps that have no shortcut");
+  }
+  return true;
+});
+
+check("raising a window takes the keyboard with it", () => {
+  // Without this a shortcut opens Files, the window comes to the front, and what
+  // you type still goes to the terminal because DOM focus never moved.
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+  if (!d.includes("winRefs")) throw new Error("windows are not registered for focusing");
+  const focus = d.slice(d.indexOf("const focus = (id) =>"), d.indexOf("const open = (app, arg, opts)"));
+  if (!/grab\(id\)/.test(focus)) throw new Error("focus() does not move DOM focus");
+  return true;
+});
+
 check("minimised windows stay mounted", () => {
   // Filtering them out of the render unmounts their iframes, which stops whatever
   // was playing. They are moved off-screen instead.
@@ -675,6 +713,78 @@ check("the browser tells the truth about what it cannot load", () => {
   if (/url:\s*"https:\/\/(www\.)?99jik\.com/.test(marks)) {
     throw new Error("the browser bookmarks the page it is running inside");
   }
+  return true;
+});
+
+check("no .jsx file calls a helper that does not exist", () => {
+  // Deleting a block by character offset has silently taken the next function with
+  // it three times now, and esbuild bundles the result without complaint: the
+  // ReferenceError only shows up in the browser, as a blank page.
+  //
+  // The rule is deliberately narrow so it cannot cry wolf. Comments and string
+  // literals are stripped first, capitalised names are left alone (components and
+  // constructors), and a lower-case name that is *called* must either be declared
+  // in the file or appear somewhere that is not a call: a parameter, a destructured
+  // binding, an object key. A deleted helper appears only as `name(`, which is
+  // exactly what this catches and nothing else is.
+  //
+  // The stripper is approximate and only has to be good enough to stop the noise.
+  // Ordinary quotes go first because they cannot nest.
+  const strip = (src) => src
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+    .replace(/`(?:[^`\\]|\\.)*`/g, "``")
+    .replace(/^\s*\/\/.*$/gm, " ")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+
+  const GLOBALS = new Set([
+    "if", "for", "while", "switch", "catch", "return", "typeof", "function", "await",
+    "new", "super", "in", "of", "do", "else", "case", "delete", "void", "yield", "async",
+    "require", "parseInt", "parseFloat", "isNaN", "isFinite",
+    "encodeURIComponent", "decodeURIComponent", "setTimeout", "clearTimeout",
+    "setInterval", "clearInterval", "fetch", "alert", "confirm", "prompt",
+    "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle",
+    "structuredClone", "queueMicrotask", "atob", "btoa", "matchMedia",
+  ]);
+
+  const files = readdirSync(new URL("../src/", import.meta.url)).filter((f) => f.endsWith(".jsx"));
+  const bad = [];
+
+  for (const f of files) {
+    const src = strip(readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8"));
+
+    const declared = new Set(GLOBALS);
+    const add = (re) => { for (const m of src.matchAll(re)) declared.add(m[1]); };
+    add(/function\s+([A-Za-z_$][\w$]*)/g);
+    add(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g);
+    add(/class\s+([A-Za-z_$][\w$]*)/g);
+    add(/import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from/g);
+    // Shorthand methods, in object literals and in classes: `name(args) {`
+    add(/(?:^|[\s,{])([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/gm);
+    for (const m of src.matchAll(/import\s*\{([^}]+)\}/g)) {
+      for (const part of m[1].split(",")) {
+        const name = part.trim().split(/\s+as\s+/).pop().trim();
+        if (name) declared.add(name);
+      }
+    }
+
+    // Every place a name is used as something other than a call. Parameters,
+    // destructured bindings and object properties all land here.
+    const nonCall = new Set();
+    for (const m of src.matchAll(/([A-Za-z_$][\w$]*)(?!\s*\()/g)) nonCall.add(m[1]);
+
+    // The leading guard matters: without it `String(` matches from the `t` and the
+    // uppercase test never sees the real first letter.
+    for (const m of src.matchAll(/(?:^|[^\w$.?])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[1];
+      if (/^[A-Z]/.test(name)) continue;   // a component or a constructor
+      if (declared.has(name) || nonCall.has(name)) continue;
+      bad.push(`${f}: ${name}()`);
+    }
+  }
+
+  if (bad.length) throw new Error("called but never defined: " + [...new Set(bad)].join(", "));
   return true;
 });
 

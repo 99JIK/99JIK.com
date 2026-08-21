@@ -32,13 +32,16 @@ function windowingAvailable() {
 // a conversation and a media player are not, and a second copy of those would just
 // be a second view of the same state.
 export const APPS = {
-  terminal: { glyph: "▶_", ko: "터미널",   en: "Terminal", w: 980, h: 640, key: "T", multi: true },
-  files:    { glyph: "▤",  ko: "파일",     en: "Files",    w: 760, h: 520, key: "F", multi: true },
-  browser:  { glyph: "◇",  ko: "브라우저", en: "Browser",  w: 900, h: 640, key: "B", multi: true },
-  chat:     { glyph: "✉",  ko: "채팅",     en: "Chat",     w: 460, h: 560, key: "C" },
-  music:    { glyph: "♪",  ko: "음악",     en: "Music",    w: 480, h: 600, key: "M" },
-  cv:       { glyph: "PDF",ko: "이력서",   en: "CV",       w: 760, h: 760, key: "V" },
-  settings: { glyph: "⚙",  ko: "설정",     en: "Settings", w: 520, h: 560, key: "," },
+  // `code` is the physical key, not the character. With a Korean layout active
+  // e.key for the M key is a jamo, so Ctrl+Alt+M matched nothing; e.code is
+  // KeyM whatever the input method is doing. `key` is only the label.
+  terminal: { glyph: "▶_", ko: "터미널",   en: "Terminal", w: 980, h: 640, key: "T", code: "KeyT", multi: true },
+  files:    { glyph: "▤",  ko: "파일",     en: "Files",    w: 760, h: 520, key: "F", code: "KeyF", multi: true },
+  browser:  { glyph: "◇",  ko: "브라우저", en: "Browser",  w: 900, h: 640, key: "B", code: "KeyB", multi: true },
+  chat:     { glyph: "✉",  ko: "채팅",     en: "Chat",     w: 460, h: 560, key: "C", code: "KeyC" },
+  music:    { glyph: "♪",  ko: "음악",     en: "Music",    w: 480, h: 600, key: "M", code: "KeyM" },
+  cv:       { glyph: "PDF",ko: "이력서",   en: "CV",       w: 760, h: 760, key: "V", code: "KeyV" },
+  settings: { glyph: "⚙",  ko: "설정",     en: "Settings", w: 520, h: 560, key: ",", code: "Comma" },
   // One window per file rather than one window in total: opening a second note
   // should not close the first, the way it would not in any file viewer.
   viewer:   { glyph: "≡",  ko: "뷰어",     en: "Viewer",   w: 640, h: 640, multi: true },
@@ -103,13 +106,21 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
     if (saved) return {
       wins: saved.wins.map((w) => ({ ...w, id: ++seq, nonce: 0 })), ws: saved.ws, restored: true,
     };
+    // A window, not a full screen: the desktop is part of what this is, and hiding
+    // it behind the first window on arrival gives that away for nothing. Anything
+    // with no room for windows still gets the whole screen.
+    const fits = windowingAvailable();
     return {
-      wins: [{ id: ++seq, app: "terminal", state: "max", ws: 0, z: 1, nonce: 0,
-               snap: "max", ...defaultRect("terminal", 0) }],
+      wins: [{ id: ++seq, app: "terminal", state: fits ? "windowed" : "max",
+               ws: 0, z: 1, nonce: 0, snap: fits ? null : "max",
+               ...defaultRect("terminal", 0) }],
       ws: 0, restored: false,
     };
   });
   const [wins, setWins] = React.useState(boot.wins);
+  // open() needs the list as it is after its own update, one frame later.
+  const winsRef = React.useRef(boot.wins);
+  React.useEffect(() => { winsRef.current = wins; }, [wins]);
   const [ws, setWs] = React.useState(boot.ws);
   const [locked, setLocked] = React.useState(false);
   const [menu, setMenu] = React.useState(null);       // { x, y }
@@ -196,10 +207,28 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
   const visible = here.filter((w) => w.state !== "min" && !w.dying);
   const focused = visible.length ? visible.reduce((a, b) => (a.z >= b.z ? a : b)).id : null;
 
-  const focus = (id) => setWins((list) => {
-    const top = list.reduce((m, w) => Math.max(m, w.z), 0);
-    return list.map((w) => (w.id === id ? { ...w, z: top + 1 } : w));
-  });
+  // Raising a window has to take the keyboard with it. Without this a shortcut
+  // opens Files, the window comes to the front, and everything you type still goes
+  // to the terminal, because DOM focus never moved.
+  const winRefs = React.useRef(new Map());
+  const grab = React.useCallback((id) => {
+    const el = winRefs.current.get(id);
+    if (!el) return;
+    // The first thing inside that can hold focus. The terminal's input is a real
+    // input; the other windows lead with a button or a scroll pane.
+    const target = el.querySelector(
+      "input:not([type=hidden]), textarea, [contenteditable], [tabindex]:not([tabindex='-1']), button");
+    try { (target || el).focus({ preventScroll: true }); } catch {}
+  }, []);
+
+  const focus = (id) => {
+    setWins((list) => {
+      const top = list.reduce((m, w) => Math.max(m, w.z), 0);
+      return list.map((w) => (w.id === id ? { ...w, z: top + 1 } : w));
+    });
+    // After the render that brings it forward, not before.
+    requestAnimationFrame(() => grab(id));
+  };
 
   // `reuse` asks for whichever window of this app is already open instead of
   // another one: "open in the terminal" wants a shell, not necessarily a new shell.
@@ -233,6 +262,12 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
       }];
     });
     if (app === "terminal") openedAt.current = performance.now();
+    // The window that a launcher or a shortcut just brought forward is the one you
+    // meant to type into.
+    requestAnimationFrame(() => {
+      const w = winsRef.current.find((x) => x.app === app);
+      if (w) grab(w.id);
+    });
   };
 
   // Closing plays an unmap animation, so the window has to survive its own removal
@@ -444,12 +479,17 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
     if (!canWindow) return;
     const onKey = (e) => {
       if (locked || !e.ctrlKey || !e.altKey) return;
-      const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      // e.code, not e.key: with a Korean layout the letter keys report jamo, so
+      // Ctrl+Alt+M matched nothing at all. The physical key is what was pressed.
+      const c = e.code;
 
-      const app = APP_KEYS.find((a) => APPS[a].key === k);
+      const app = APP_KEYS.find((a) => APPS[a].code === c);
       if (app) { e.preventDefault(); open(app); return; }
 
-      if (k === "Tab") {
+      // Ctrl+Alt+Tab never reaches the page: Windows takes it first. Backquote is
+      // the key every desktop uses for cycling within an app, and it is in the same
+      // place on a Korean keyboard.
+      if (c === "Backquote") {
         e.preventDefault();
         const cycle = here.filter((w) => w.state !== "min").sort((a, b) => a.id - b.id);
         if (cycle.length < 2) return;
@@ -457,19 +497,20 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
         focus(cycle[(i + (e.shiftKey ? -1 : 1) + cycle.length) % cycle.length].id);
         return;
       }
-      if (k === "D") { e.preventDefault(); showDesktop(); return; }
-      if (k === "L") { e.preventDefault(); setLocked(true); return; }
-      if (k === "Q") { e.preventDefault(); if (focused) close(focused); return; }
-      if (k >= "1" && k <= String(WORKSPACES)) { e.preventDefault(); setWs(+k - 1); return; }
-      if (k === "ArrowLeft" || k === "ArrowRight") {
+      if (c === "KeyD") { e.preventDefault(); showDesktop(); return; }
+      if (c === "KeyL") { e.preventDefault(); setLocked(true); return; }
+      if (c === "KeyQ") { e.preventDefault(); if (focused) close(focused); return; }
+      const digit = /^Digit([1-9])$/.exec(c);
+      if (digit && +digit[1] <= WORKSPACES) { e.preventDefault(); setWs(+digit[1] - 1); return; }
+      if (c === "ArrowLeft" || c === "ArrowRight") {
         e.preventDefault();
-        const d = k === "ArrowLeft" ? -1 : 1;
+        const d = c === "ArrowLeft" ? -1 : 1;
         if (e.shiftKey) { if (focused) applySnap(focused, d < 0 ? "l" : "r"); }
         else setWs((n) => (n + d + WORKSPACES) % WORKSPACES);
         return;
       }
-      if (k === "ArrowUp") { e.preventDefault(); if (focused) applySnap(focused, "max"); return; }
-      if (k === "ArrowDown") {
+      if (c === "ArrowUp") { e.preventDefault(); if (focused) applySnap(focused, "max"); return; }
+      if (c === "ArrowDown") {
         e.preventDefault();
         if (!focused) return;
         const w = wins.find((x) => x.id === focused);
@@ -573,7 +614,8 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
           + (reduceMotion ? "" : " animate");
         const wm = controlsFor(win);
         return (
-          <div key={win.id} className={cls} style={style}
+          <div key={win.id} className={cls} style={style} tabIndex={-1}
+               ref={(el) => { if (el) winRefs.current.set(win.id, el); else winRefs.current.delete(win.id); }}
                inert={hidden || undefined} aria-hidden={hidden ? "true" : undefined}
                onPointerDown={hidden ? undefined : () => focus(win.id)}>
             <WindowBoundary app={appName(win.app)} lang={lang} onClose={() => close(win.id)}>
