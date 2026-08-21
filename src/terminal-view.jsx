@@ -351,6 +351,25 @@ function TerminalView({ onModeChange, onTheme, lang, onLang, wm }) {
     return off;
   }, [focused, lang, chatOn]);
 
+  // A focused terminal takes the keyboard, and keeps taking it. Clicking used to be
+  // the only way in: after switching browser tabs, or opening the page at all, the
+  // caret was drawn but nothing typed into it. Anything the visitor clicks inside
+  // the window (a link, a button) hands focus back to the line afterwards.
+  React.useEffect(() => {
+    if (vi || !focused) return;
+    const take = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      // A selection means they are copying something, and stealing focus would
+      // collapse it.
+      try { if (String(window.getSelection() || "").trim()) return; } catch {}
+      if (document.activeElement !== el) el.focus({ preventScroll: true });
+    };
+    take();
+    window.addEventListener("focus", take);
+    return () => window.removeEventListener("focus", take);
+  }, [focused, vi]);
+
   // While the terminal is in chat mode the conversation is already on screen, so
   // the dock should not also announce it.
   React.useEffect(() => {

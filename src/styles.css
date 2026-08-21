@@ -837,7 +837,6 @@ body {
 .win.maxed { top: 0; left: 0; right: 0; bottom: 44px; }
 .win.framed {
   border: 1px solid var(--t-border); border-radius: 8px;
-  box-shadow: 0 24px 70px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.3);
 }
 /* Eight grips, one per edge and corner. They sit just outside the frame as well as
    just inside it, because a 3px border is not a pointer target: EDGE is how far the
@@ -1220,12 +1219,20 @@ button.term-dot:hover { filter: brightness(1.25); }
 
 
 /* ===== Desktop: focus, snapping, menu, lock, toasts ===== */
-/* Which window has focus has to be visible without reading the stacking order, so
-   the unfocused ones step back rather than the focused one shouting. */
-.win.framed { opacity: 0.94; }
-.win.framed.on { opacity: 1; box-shadow: 0 28px 80px rgba(0,0,0,0.55), 0 0 0 1px var(--t-accent); }
-.win.framed:not(.on) .brw-title,
-.win.framed:not(.on) .term-title { filter: saturate(0.5); }
+/* Which window has focus, shown the way a window manager shows it: by how far off
+   the surface it sits. Fading the whole window and desaturating its title bar made
+   the contents look broken rather than inactive, so neither happens now. Only the
+   shadow and the title bar's own text change. */
+.win.framed {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.30);
+  transition: box-shadow 0.14s ease-out;
+}
+.win.framed.on { box-shadow: 0 22px 60px rgba(0,0,0,0.5); }
+/* The dots keep their colour on the focused window and go grey on the rest, which
+   is the one convention everybody already reads without being told. */
+.win.framed:not(.on) .term-dot { background: var(--t-border); }
+.win.framed:not(.on) .term-title-name,
+.win.framed:not(.on) .brw-title .term-title-name { opacity: 0.55; }
 
 /* Where the window will land if the drag ends here. */
 .snap-preview {

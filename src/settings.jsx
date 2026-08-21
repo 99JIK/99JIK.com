@@ -8,6 +8,8 @@ export function Settings({ lang, wm, theme, onTheme, onLang, onReset, apps }) {
   const T = lang === "en" ? {
     title: "Settings", look: "Appearance", theme: "Theme", language: "Language",
     keys: "Keyboard", motion: "Motion",
+    probe: "Last Ctrl+Alt press", probeNone: "press one and it appears here",
+    probeHint: "nothing here means the key never reached the page",
     motionOn: "Animations follow your system setting.",
     motionOff: "Your system asks for reduced motion, so window animations are off.",
     layout: "Layout", reset: "Reset the layout",
@@ -17,6 +19,8 @@ export function Settings({ lang, wm, theme, onTheme, onLang, onReset, apps }) {
   } : {
     title: "설정", look: "모양", theme: "테마", language: "언어",
     keys: "키보드", motion: "모션",
+    probe: "마지막 Ctrl+Alt 입력", probeNone: "눌러보면 여기 나타납니다",
+    probeHint: "아무것도 안 나오면 그 키가 페이지까지 오지 않은 것입니다",
     motionOn: "시스템 설정을 따릅니다.",
     motionOff: "시스템이 모션 줄이기를 요청해서 창 애니메이션이 꺼져 있습니다.",
     layout: "배치", reset: "배치 초기화",
@@ -24,6 +28,20 @@ export function Settings({ lang, wm, theme, onTheme, onLang, onReset, apps }) {
     confirm: "초기화하고 새로고침할까요?",
     launch: "실행 / 포커스", wm: "창", spaces: "작업공간",
   };
+
+  // What the browser actually reported for the last Ctrl+Alt press. A shortcut that
+  // does nothing is either not reaching the page at all (the OS or the browser took
+  // it) or arriving as something other than expected, and those need different
+  // fixes. This says which.
+  const [seen, setSeen] = React.useState(null);
+  React.useEffect(() => {
+    const h = (e) => {
+      if (!e.ctrlKey || !e.altKey) return;
+      setSeen({ code: e.code, key: e.key, composing: !!e.isComposing });
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   const reduced = (() => {
     try { return window.prefersReducedMotion(); } catch { return false; }
@@ -114,6 +132,16 @@ export function Settings({ lang, wm, theme, onTheme, onLang, onReset, apps }) {
             ))}
           </div>
         ))}
+
+        <div className="set-row">
+          <span>{T.probe}</span>
+          <span className="set-note">
+            {seen
+              ? `code: ${seen.code}   key: ${seen.key}${seen.composing ? "   (IME 조합 중)" : ""}`
+              : T.probeNone}
+          </span>
+        </div>
+        <p className="set-note">{T.probeHint}</p>
 
         <h3>{T.layout}</h3>
         <div className="set-row">
