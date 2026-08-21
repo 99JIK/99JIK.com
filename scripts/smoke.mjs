@@ -754,7 +754,21 @@ check("booking asks, and says that it is asking", () => {
   // It goes down the chat pipe, and says so when that pipe is missing rather than
   // swallowing the message.
   if (!/chatReady\(\)/.test(c)) throw new Error("the form does not check the channel exists");
-  if (!/mailto:/.test(c)) throw new Error("there is no fallback when chat is blocked");
+  if (!/mailto:/.test(c)) throw new Error("there is no fallback when chat is blocked");
+
+  // The form used to live in the footer strip beside the button that opened it,
+  // which left three fields and a slot grid fighting over one line. It takes the
+  // body now, and the labels stack above their inputs so a narrow window squeezes
+  // neither half.
+  if (!/className="cal-body book-body"/.test(c)) throw new Error("booking is back in the footer");
+  if (!/setDay=\{setPicked\}/.test(c)) throw new Error("no way to change day once the grid is hidden");
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const f = css.match(/\.book-f \{([^}]*)\}/);
+  if (!f || !/flex-direction: column/.test(f[1])) throw new Error("fields are side-by-side again");
+  // A single-instance app, so the form id the footer button points at stays unique.
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+  const cal = d.match(/calendar: \{[^}]*\}/);
+  if (cal && /multi: true/.test(cal[0])) throw new Error("calendar went multi-instance; form id collides");
   const chat = readFileSync(new URL("../src/chat.jsx", import.meta.url), "utf8");
   if (!/export function sendChat/.test(chat)) throw new Error("chat.jsx does not expose sending");
   return true;

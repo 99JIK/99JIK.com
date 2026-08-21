@@ -52,7 +52,15 @@ function freeSlots(day, events) {
   return out;
 }
 
-function BookingPanel({ lang, day, events, onClose, onOpenChat }) {
+// The booking flow takes the whole window body. It started life squeezed into the
+// footer next to the button that opened it, which left the fields fighting over a
+// strip of space. A form needs room, so it gets the room and the calendar steps
+// aside while it is open.
+//
+// The month grid is gone while booking, so the day stepper here replaces it. Hunting
+// for an open day is the common case, hence next-free-day doing the walking instead
+// of the visitor clicking through weekends one at a time.
+function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
   const [slot, setSlot] = React.useState(null);
   const [name, setName] = React.useState(() => {
     const n = window.getPromptName && window.getPromptName();
@@ -67,55 +75,63 @@ function BookingPanel({ lang, day, events, onClose, onOpenChat }) {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; }
   })();
 
+  // Changing the day invalidates whatever was picked on the old one.
+  React.useEffect(() => { setSlot(null); }, [day]);
+
   const T = lang === "en" ? {
-    head: "Request a time", pick: "Pick a slot", none: "no free slots on this day",
-    weekend: "weekends are not offered", name: "Your name", contact: "Email or handle",
-    why: "What it is about", send: "Send the request", cancel: "Cancel",
-    needs: "Pick a slot and leave a name.",
-    doneH: "Sent.", done: "It is a request, not a confirmed booking: nothing here can write to the calendar. The reply comes back in the chat window.",
-    openChat: "Open chat", addSelf: "Add to my own calendar", official: "Book through Google instead",
-    noChat: "The chat script did not load, most likely blocked. Mail works:",
-    zone: (z) => `times are in ${z}`,
-    tentative: "(tentative)",
+    head: "Request a time", back: "back", am: "morning", pm: "afternoon",
+    none: "nothing free on this day", weekend: "weekends are not offered",
+    next: "next free day", nofree: "no free day in the next two months",
+    name: "Your name", contact: "Email or handle", why: "What it is about",
+    whyPh: "a sentence is plenty",
+    send: "Send the request", cancel: "Cancel", needSlot: "pick a time first",
+    needName: "leave a name", official: "Book through Google",
+    doneH: "Request sent",
+    done: "This is a request, not a confirmed booking. Nothing on this page can write to his calendar. The reply comes back in the chat window.",
+    openChat: "Open chat", addSelf: "Add to my calendar", close: "Done",
+    noChatH: "Chat did not load",
+    noChat: "The chat script is blocked, most likely by an extension. Nothing was sent. Mail carries the same request:",
+    mins: "30 min",
   } : {
-    head: "시간 요청하기", pick: "시간 고르기", none: "이 날은 비는 시간이 없습니다",
-    weekend: "주말은 제외됩니다", name: "이름", contact: "이메일 또는 연락처",
-    why: "어떤 용건인지", send: "요청 보내기", cancel: "취소",
-    needs: "시간을 고르고 이름을 적어주세요.",
-    doneH: "보냈습니다.", done: "확정된 예약이 아니라 요청입니다. 여기서 캘린더에 쓸 수는 없습니다. 답장은 채팅 창으로 옵니다.",
-    openChat: "채팅 열기", addSelf: "내 캘린더에 넣기", official: "구글로 직접 예약하기",
-    noChat: "채팅 스크립트가 로드되지 않았습니다. 차단된 것 같습니다. 메일은 됩니다:",
-    zone: (z) => `시간대: ${z}`,
-    tentative: "(가예약)",
+    head: "시간 요청", back: "뒤로", am: "오전", pm: "오후",
+    none: "이 날은 비는 시간이 없습니다", weekend: "주말은 제외됩니다",
+    next: "다음 빈 날로", nofree: "두 달 안에 빈 날이 없습니다",
+    name: "이름", contact: "이메일 또는 연락처", why: "용건",
+    whyPh: "한 문장이면 충분합니다",
+    send: "요청 보내기", cancel: "취소", needSlot: "시간을 먼저 고르세요",
+    needName: "이름을 적어주세요", official: "구글로 직접 예약",
+    doneH: "요청을 보냈습니다",
+    done: "확정된 예약이 아니라 요청입니다. 이 페이지에서 상대 캘린더에 쓸 수는 없습니다. 답장은 채팅 창으로 옵니다.",
+    openChat: "채팅 열기", addSelf: "내 캘린더에 넣기", close: "닫기",
+    noChatH: "채팅이 로드되지 않았습니다",
+    noChat: "확장 프로그램이 채팅 스크립트를 막은 것 같습니다. 아무것도 전송되지 않았습니다. 메일로 같은 내용을 보낼 수 있습니다:",
+    mins: "30분",
   };
 
   const p = window.SITE_DATA.profile;
-  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-` +
-                     `${String(d.getDate()).padStart(2, "0")} ` +
-                     `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const two = (n) => String(n).padStart(2, "0");
+  const hhmm = (d) => two(d.getHours()) + ":" + two(d.getMinutes());
+  const endOf = (s) => new Date(s.getTime() + SLOT * 60000);
+  const range = (s) => s.getFullYear() + "-" + two(s.getMonth() + 1) + "-" + two(s.getDate()) +
+                       " " + hhmm(s) + " - " + hhmm(endOf(s));
 
-  const body = () => {
-    const end = new Date(slot.getTime() + SLOT * 60000);
-    return [
-      lang === "en" ? "[Meeting request]" : "[약속 요청]",
-      `${lang === "en" ? "when" : "희망 시간"}: ${fmt(slot)} - ${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")} (${zone})`,
-      `${lang === "en" ? "name" : "이름"}: ${name.trim()}`,
-      contact.trim() ? `${lang === "en" ? "contact" : "연락처"}: ${contact.trim()}` : null,
-      why.trim() ? `${lang === "en" ? "about" : "용건"}: ${why.trim()}` : null,
-    ].filter(Boolean).join(String.fromCharCode(10));
-  };
+  const body = () => [
+    lang === "en" ? "[Meeting request]" : "[약속 요청]",
+    (lang === "en" ? "when" : "희망 시간") + ": " + range(slot) + " (" + zone + ")",
+    (lang === "en" ? "name" : "이름") + ": " + name.trim(),
+    contact.trim() ? (lang === "en" ? "contact" : "연락처") + ": " + contact.trim() : null,
+    why.trim() ? (lang === "en" ? "about" : "용건") + ": " + why.trim() : null,
+  ].filter(Boolean).join(String.fromCharCode(10));
 
-  // A calendar template link puts it on the *visitor's* calendar, which is the only
-  // calendar this page is allowed to touch. Marked tentative for that reason.
-  const selfLink = () => {
-    if (!slot) return "#";
-    const end = new Date(slot.getTime() + SLOT * 60000);
+  // A template link puts it on the *visitor's* calendar, which is the only calendar
+  // this page is allowed to touch. Marked tentative for exactly that reason.
+  const selfLink = (s) => {
     const z = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
     const q = new URLSearchParams({
       action: "TEMPLATE",
-      text: `${p.name_en} ${T.tentative}`,
-      dates: `${z(slot)}/${z(end)}`,
-      details: body(),
+      text: p.name_en + " " + (lang === "en" ? "(tentative)" : "(가예약)"),
+      dates: z(s.when) + "/" + z(endOf(s.when)),
+      details: s.text,
     });
     return "https://calendar.google.com/calendar/render?" + q.toString();
   };
@@ -124,83 +140,144 @@ function BookingPanel({ lang, day, events, onClose, onOpenChat }) {
     e.preventDefault();
     if (!slot || !name.trim()) return;
     const text = body();
-    if (chatReady()) { sendChat(text); setSent({ text, via: "chat" }); }
-    else setSent({ text, via: "mail" });
+    if (chatReady()) { sendChat(text); setSent({ text, when: slot, via: "chat" }); }
+    else setSent({ text, when: slot, via: "mail" });
   };
 
+  // Walk forward for a day with anything on offer. Two months is far enough that
+  // coming up empty means the working-hours window is wrong, not that he is busy.
+  const findFree = React.useCallback(() => {
+    for (let i = 1; i <= 62; i++) {
+      const d = new Date(day.getFullYear(), day.getMonth(), day.getDate() + i);
+      if (freeSlots(d, events).length) return d;
+    }
+    return null;
+  }, [day, events]);
+  const nextDay = React.useMemo(() => (slots.length ? null : findFree()), [slots, findFree]);
+
+  const stepDay = (n) => setDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + n));
+
+  const head = (title) => (
+    <div className="book-head">
+      <button type="button" className="book-back" onClick={onClose} aria-label={T.back}>←</button>
+      <span className="book-title">{title}</span>
+    </div>
+  );
+
   if (sent) {
-    const mail = `mailto:${p.email}?subject=${encodeURIComponent(lang === "en" ? "Meeting request" : "약속 요청")}` +
-                 `&body=${encodeURIComponent(sent.text)}`;
+    const mail = "mailto:" + p.email +
+                 "?subject=" + encodeURIComponent(lang === "en" ? "Meeting request" : "약속 요청") +
+                 "&body=" + encodeURIComponent(sent.text);
+    const ok = sent.via === "chat";
     return (
-      <div className="book">
-        <div className="book-h">{T.doneH}</div>
-        {sent.via === "chat" ? (
-          <>
-            <p className="set-note">{T.done}</p>
-            <div className="book-acts">
-              <button type="button" className="cal-book" onClick={onOpenChat}>{T.openChat}</button>
-              <a className="pdfv-act" href={selfLink()} target="_blank" rel="noreferrer">{T.addSelf} ↗</a>
-              <button type="button" className="pdfv-act" onClick={onClose}>{T.cancel}</button>
+      <>
+        <div className="cal-body book-body" onPointerDown={(e) => e.stopPropagation()}>
+          {head(ok ? T.doneH : T.noChatH)}
+          <div className={"book-card" + (ok ? " ok" : " warn")}>
+            <Icon name="calendar" size={18} />
+            <div className="book-card-x">
+              <div className="book-card-t">{range(sent.when)}</div>
+              <div className="book-card-s">{name.trim()}{zone ? "  ·  " + zone : ""}</div>
             </div>
-          </>
-        ) : (
-          <>
-            <p className="set-note">{T.noChat}</p>
-            <pre className="book-pre">{sent.text}</pre>
-            <div className="book-acts">
-              <a className="cal-book" href={mail}>{p.email}</a>
-              <a className="pdfv-act" href={selfLink()} target="_blank" rel="noreferrer">{T.addSelf} ↗</a>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+          <p className="book-note">{ok ? T.done : T.noChat}</p>
+          {!ok && <pre className="book-pre">{sent.text}</pre>}
+        </div>
+        <div className="cal-foot" onPointerDown={(e) => e.stopPropagation()}>
+          {ok ? (
+            <button type="button" className="cal-book" onClick={onOpenChat}>{T.openChat}</button>
+          ) : (
+            <a className="cal-book" href={mail}>{p.email}</a>
+          )}
+          <a className="book-link" href={selfLink(sent)} target="_blank" rel="noreferrer">{T.addSelf} ↗</a>
+          <span className="book-sp" />
+          <button type="button" className="book-link" onClick={onClose}>{T.close}</button>
+        </div>
+      </>
     );
   }
 
+  const group = (label, list) => list.length === 0 ? null : (
+    <div className="book-grp">
+      <div className="book-grp-h">{label}</div>
+      <div className="book-slots">
+        {list.map((s) => (
+          <button key={s.getTime()} type="button" role="radio"
+                  aria-checked={!!slot && slot.getTime() === s.getTime()}
+                  className={"book-slot" + (slot && slot.getTime() === s.getTime() ? " on" : "")}
+                  onClick={() => setSlot(s)}>
+            {hhmm(s)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const weekend = day.getDay() === 0 || day.getDay() === 6;
+
   return (
-    <form className="book" onSubmit={submit}>
-      <div className="book-h">{T.head}</div>
-      <div className="book-day">
-        {window.CALENDAR.fmtDay(day, lang)}
-        {zone && <span className="set-note">  {T.zone(zone)}</span>}
+    <>
+      <div className="cal-body book-body" onPointerDown={(e) => e.stopPropagation()}>
+        {head(T.head)}
+
+        <div className="book-daybar">
+          <button type="button" onClick={() => stepDay(-1)} aria-label="previous day">{"<"}</button>
+          <span className="book-day">{window.CALENDAR.fmtDay(day, lang)}</span>
+          <button type="button" onClick={() => stepDay(1)} aria-label="next day">{">"}</button>
+          {zone && <span className="book-zone">{zone}</span>}
+        </div>
+
+        <form id="bookq" className="book-form" onSubmit={submit}>
+          {slots.length === 0 ? (
+            <div className="book-empty">
+              <span>{weekend ? T.weekend : T.none}</span>
+              {nextDay
+                ? <button type="button" className="book-link"
+                          onClick={() => setDay(nextDay)}>{T.next} →</button>
+                : <span className="book-note">{T.nofree}</span>}
+            </div>
+          ) : (
+            <div role="radiogroup" aria-label={T.head}>
+              {group(T.am, slots.filter((s) => s.getHours() < 12))}
+              {group(T.pm, slots.filter((s) => s.getHours() >= 12))}
+            </div>
+          )}
+
+          <label className="book-f">
+            <span>{T.name}</span>
+            <input value={name} onInput={(e) => setName(e.currentTarget.value)}
+                   autoComplete="name" required />
+          </label>
+          <label className="book-f">
+            <span>{T.contact}</span>
+            <input value={contact} onInput={(e) => setContact(e.currentTarget.value)}
+                   autoComplete="email" />
+          </label>
+          <label className="book-f">
+            <span>{T.why}</span>
+            <textarea rows="2" value={why} placeholder={T.whyPh}
+                      onInput={(e) => setWhy(e.currentTarget.value)} />
+          </label>
+        </form>
       </div>
 
-      {slots.length === 0 ? (
-        <div className="cal-msg">{day.getDay() === 0 || day.getDay() === 6 ? T.weekend : T.none}</div>
-      ) : (
-        <div className="book-slots" role="radiogroup" aria-label={T.pick}>
-          {slots.map((s) => (
-            <button key={s.getTime()} type="button" role="radio"
-                    aria-checked={slot && slot.getTime() === s.getTime()}
-                    className={"book-slot" + (slot && slot.getTime() === s.getTime() ? " on" : "")}
-                    onClick={() => setSlot(s)}>
-              {window.CALENDAR.fmtTime(s)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <label className="book-f"><span>{T.name}</span>
-        <input value={name} onInput={(e) => setName(e.currentTarget.value)} required />
-      </label>
-      <label className="book-f"><span>{T.contact}</span>
-        <input value={contact} onInput={(e) => setContact(e.currentTarget.value)} />
-      </label>
-      <label className="book-f"><span>{T.why}</span>
-        <input value={why} onInput={(e) => setWhy(e.currentTarget.value)} />
-      </label>
-
-      <div className="book-acts">
-        <button type="submit" className="cal-book" disabled={!slot || !name.trim()}>{T.send}</button>
-        <button type="button" className="pdfv-act" onClick={onClose}>{T.cancel}</button>
+      <div className="cal-foot" onPointerDown={(e) => e.stopPropagation()}>
+        <button type="submit" form="bookq" className="cal-book" disabled={!slot || !name.trim()}>
+          {T.send}
+        </button>
+        {!slot
+          ? <span className="book-note">{T.needSlot}</span>
+          : !name.trim()
+            ? <span className="book-note">{T.needName}</span>
+            : <span className="book-sel">{hhmm(slot)} <span className="book-note">{T.mins}</span></span>}
+        <span className="book-sp" />
+        <button type="button" className="book-link" onClick={onClose}>{T.cancel}</button>
         {window.SITE_DATA.site.bookingUrl && (
-          <a className="pdfv-act" href={window.SITE_DATA.site.bookingUrl} target="_blank" rel="noreferrer">
-            {T.official} ↗
-          </a>
+          <a className="book-link" href={window.SITE_DATA.site.bookingUrl}
+             target="_blank" rel="noreferrer">{T.official} ↗</a>
         )}
       </div>
-      {(!slot || !name.trim()) && <p className="set-note">{T.needs}</p>}
-    </form>
+    </>
   );
 }
 
@@ -286,6 +363,12 @@ export function CalendarApp({ lang, wm, onOpen }) {
         </div>
       </div>
 
+      {booking ? (
+        <BookingPanel lang={lang} day={picked} setDay={setPicked} events={events}
+                      onClose={() => setBooking(false)}
+                      onOpenChat={() => { setBooking(false); onOpen && onOpen("chat"); }} />
+      ) : (
+      <>
       <div className="cal-body" onPointerDown={(e) => e.stopPropagation()}>
         <div className="cal-bar">
           <button type="button" onClick={() => step(-1)} aria-label="previous month">{"<"}</button>
@@ -349,19 +432,13 @@ export function CalendarApp({ lang, wm, onOpen }) {
 
       {data && !data.failed && (
         <div className="cal-foot" onPointerDown={(e) => e.stopPropagation()}>
-          {!booking ? (
-            <>
-              <button type="button" className="cal-book" onClick={() => setBooking(true)}>
-                <Icon name="calendar" size={16} /> {T.book}
-              </button>
-              <span className="set-note">{T.why}</span>
-            </>
-          ) : (
-            <BookingPanel lang={lang} day={picked} events={events}
-                          onClose={() => setBooking(false)}
-                          onOpenChat={() => { setBooking(false); onOpen && onOpen("chat"); }} />
-          )}
+          <button type="button" className="cal-book" onClick={() => setBooking(true)}>
+            <Icon name="calendar" size={16} /> {T.book}
+          </button>
+          <span className="book-note">{T.why}</span>
         </div>
+      )}
+      </>
       )}
     </div>
   );

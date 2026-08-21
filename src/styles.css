@@ -1699,36 +1699,99 @@ pre.fm-view-body,
 .cal-book:hover { filter: brightness(1.08); }
 .cal-foot .set-note { flex: 1; min-width: 10rem; font-size: 11px; }
 
-/* The booking form, in the calendar's footer where the link used to be. */
-.book { flex: 1; min-width: 0; display: grid; gap: 8px; }
-.book-h { font-size: 13px; font-weight: 600; color: var(--t-fg); }
-.book-day { font-size: 12px; color: var(--t-fg); }
-.book-day .set-note { margin: 0 0 0 8px; display: inline; }
-.book-slots { display: flex; flex-wrap: wrap; gap: 4px; max-height: 5.6rem; overflow-y: auto; }
-.book-slot {
-  font: inherit; font-family: var(--mono); font-size: 11px; cursor: pointer;
+/* ===== Booking ===== */
+/* It takes the window body while it is open, so it is laid out as a page rather
+   than as a strip: header, day, slots, fields, and the action pinned in the footer
+   where the calendar's own button was. */
+.book-body { display: flex; flex-direction: column; gap: 14px; }
+
+.book-head { display: flex; align-items: center; gap: 8px; }
+.book-back {
+  font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+  color: var(--t-muted); background: transparent;
+  border: 1px solid transparent; border-radius: 4px; padding: 3px 7px;
+}
+.book-back:hover { color: var(--t-accent); background: var(--t-chipHover); }
+.book-title { font-size: 14px; font-weight: 600; }
+
+.book-daybar { display: flex; align-items: center; gap: 8px; }
+.book-daybar button {
+  font: inherit; font-size: 12px; cursor: pointer; min-width: 2em;
   color: var(--t-fg); background: transparent;
-  border: 1px solid var(--t-border); border-radius: 3px; padding: 2px 8px;
+  border: 1px solid var(--t-border); border-radius: 3px; padding: 1px 7px;
+}
+.book-daybar button:hover { border-color: var(--t-accent); color: var(--t-accent); }
+.book-day { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; }
+.book-zone { font-size: 11px; color: var(--t-muted); font-family: var(--mono); }
+
+.book-form { display: flex; flex-direction: column; gap: 14px; }
+
+.book-grp + .book-grp { margin-top: 10px; }
+.book-grp-h { font-size: 11px; color: var(--t-muted); margin-bottom: 5px; }
+/* Even columns rather than a ragged wrap: the times line up down the window. */
+.book-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.4rem, 1fr)); gap: 5px; }
+.book-slot {
+  font: inherit; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  color: var(--t-fg); background: transparent;
+  border: 1px solid var(--t-border); border-radius: 4px; padding: 6px 0;
 }
 .book-slot:hover { border-color: var(--t-accent); color: var(--t-accent); }
-.book-slot.on { color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent); }
-.book-f { display: grid; grid-template-columns: 6.5rem 1fr; gap: 8px; align-items: center; font-size: 12px; }
-.book-f > span { color: var(--t-muted); }
-.book-f input {
-  font: inherit; font-size: 12px; min-width: 0;
-  color: var(--t-fg); background: var(--t-bg);
-  border: 1px solid var(--t-border); border-radius: 3px; padding: 4px 8px;
+.book-slot.on {
+  color: var(--t-bg); background: var(--t-accent); border-color: var(--t-accent);
+  font-weight: 600;
 }
-.book-f input:focus { outline: none; border-color: var(--t-accent); }
-.book-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.book-acts button, .book-acts a { font-size: 12px; }
-.book-acts .cal-book { border: 0; cursor: pointer; font-family: inherit; }
-.book-acts .cal-book:disabled { opacity: 0.45; cursor: default; filter: none; }
-.book-acts .pdfv-act { background: transparent; border: 0; cursor: pointer; font-family: inherit; }
+
+.book-empty {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 12px; color: var(--t-muted);
+  border: 1px dashed var(--t-border); border-radius: 4px; padding: 14px 12px;
+}
+
+/* Label above the field: a side column would squeeze both halves in a narrow
+   window, and Korean labels are the ones that lose. */
+.book-f { display: flex; flex-direction: column; gap: 5px; }
+.book-f > span { font-size: 11px; color: var(--t-muted); }
+.book-f input, .book-f textarea {
+  font: inherit; font-family: var(--ui); font-size: 13px; width: 100%; resize: none;
+  color: var(--t-fg); background: var(--t-titlebar);
+  border: 1px solid var(--t-border); border-radius: 4px; padding: 7px 9px;
+}
+.book-f input:focus, .book-f textarea:focus {
+  outline: none; border-color: var(--t-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 22%, transparent);
+}
+.book-f textarea { line-height: 1.5; }
+.book-f ::placeholder { color: var(--t-muted); opacity: 0.7; }
+
+.book-card {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--t-border); border-left-width: 3px; border-radius: 4px;
+  padding: 12px 14px; background: var(--t-titlebar);
+}
+.book-card.ok { border-left-color: var(--t-green); }
+.book-card.warn { border-left-color: var(--t-red); }
+.book-card .icn { color: var(--t-muted); }
+.book-card-x { min-width: 0; }
+.book-card-t { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.book-card-s { font-size: 11px; color: var(--t-muted); margin-top: 3px; }
+
+.book-note { font-size: 11px; color: var(--t-muted); line-height: 1.6; margin: 0; }
 .book-pre {
-  margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 11px;
-  white-space: pre-wrap; color: var(--t-fg);
-  background: var(--t-bg); border: 1px solid var(--t-border); border-radius: 3px;
+  margin: 0; padding: 10px 12px; font-family: var(--mono); font-size: 11px;
+  white-space: pre-wrap; line-height: 1.6; color: var(--t-fg);
+  background: var(--t-titlebar); border: 1px solid var(--t-border); border-radius: 4px;
 }
-/* The footer holds a form now, so it stacks instead of sitting on one line. */
-.cal-foot { align-items: flex-start; }
+
+/* Quiet actions next to the one loud one. */
+.book-link {
+  font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+  color: var(--t-muted); background: transparent; border: 0; padding: 0;
+  text-decoration: none;
+}
+.book-link:hover { color: var(--t-accent); }
+.book-sp { flex: 1; }
+.book-sel { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.book-sel .book-note { margin-left: 4px; }
+.cal-book:disabled { opacity: 0.4; cursor: default; filter: none; }
+.cal-foot > .cal-book { border: 0; cursor: pointer; font-family: inherit; }
