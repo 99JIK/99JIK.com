@@ -748,7 +748,15 @@ check("booking asks, and says that it is asking", () => {
   // Slots come from the same events the grid is drawn from, so an offered slot is
   // one that is actually free.
   if (!/function freeSlots\(day, events\)/.test(c)) throw new Error("slots are not computed from the calendar");
-  if (!/if \(s <= now\) continue/.test(c)) throw new Error("the past is bookable");
+  if (!/if \(s\.getTime\(\) <= now\) continue/.test(c)) throw new Error("the past is bookable");
+  // Working hours are his, not the visitor's. Anchoring them to the browser's local
+  // clock offered a New Yorker 10:00-18:00 EDT, the middle of the night in Seoul.
+  if (!/atZone\(y, mo, d, h, m, TZ\)/.test(c)) throw new Error("slots are built in the visitor's zone");
+  if (/s\.getHours\(\) [<>]/.test(c)) throw new Error("am/pm split still reads the local clock");
+  const data = readFileSync(new URL("../src/data.js", import.meta.url), "utf8");
+  if (!/timezone: "Asia\/Seoul"/.test(data)) throw new Error("no owner timezone declared");
+  const cjs = readFileSync(new URL("../src/calendar.js", import.meta.url), "utf8");
+  if (!/\+09:00/.test(cjs)) throw new Error("all-day offset no longer agrees with Asia/Seoul");
   if (!/dow === 0 \|\| dow === 6/.test(c)) throw new Error("weekends are offered");
 
   // It goes down the chat pipe, and says so when that pipe is missing rather than

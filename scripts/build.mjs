@@ -13,6 +13,13 @@ const OUT = "dist";
 // instead of being hand-maintained in data.js.
 const BUILD_DATE = new Date().toISOString().slice(0, 10);
 
+// Papers are real files under public/papers, so the list is whatever is on disk
+// rather than a second copy of it in data.js that can drift. Drop a PDF in, rebuild,
+// and it shows up in ~/papers and opens in the viewer.
+const PAPERS = existsSync("public/papers")
+  ? readdirSync("public/papers").filter((f) => f.toLowerCase().endsWith(".pdf")).sort()
+  : [];
+
 
 
 const esbuildOpts = {
@@ -33,6 +40,7 @@ const esbuildOpts = {
   loader: { ".jsx": "jsx", ".js": "js" },
   define: {
     __BUILD_DATE__: JSON.stringify(BUILD_DATE),
+    __PAPERS__: JSON.stringify(PAPERS),
   },
   logLevel: "info",
 };

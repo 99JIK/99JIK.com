@@ -31,6 +31,7 @@ window.SITE_DATA = {
     // is on the allow list, which just means local dev reads the snapshot.
     gcalApiKey: "AIzaSyCTq5wjQREru3sWUbGXvyiFPM4JhRs847Y",
     bookingUrl: "https://calendar.app.google/ApbFL4J7C88LE2YQ7",  // "book a slot" page
+    timezone: "Asia/Seoul",   // his clock. Booking hours are anchored here, not to the visitor
     // /home/jeongin/.midnight/playlist.m3u, read live from the YouTube Data API.
     // Needs that API enabled on the same Google Cloud project as gcalApiKey, and the
     // key's API restrictions widened to include it. Empty string leaves the file empty.

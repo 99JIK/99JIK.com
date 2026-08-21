@@ -137,6 +137,20 @@
       };
     });
 
+    // Whatever PDFs are sitting in public/papers, injected at build time. Same
+    // origin, so the viewer's blob fetch always succeeds: no CORS, no framing rules,
+    // nothing to negotiate. The dir is left out entirely when there are none rather
+    // than showing an empty folder.
+    const paperFiles = typeof __PAPERS__ !== "undefined" ? __PAPERS__ : [];
+    const papers = paperFiles.length ? {
+      type: "dir", mtime: dayAgo(1),
+      children: Object.fromEntries(paperFiles.map((f, i) => [f, {
+        type: "file", mtime: dayAgo(3 + i), size: 0,
+        pdf: { ko: "/papers/" + f },
+        content: ["%PDF (fetched on open)", "/papers/" + f],
+      }])),
+    } : null;
+
     // Jeongin's home - all the personal / portfolio content lives here.
     const jeonginHome = {
       type: "dir", mtime: dayAgo(0),
@@ -269,6 +283,8 @@
         },
       },
     };
+
+    if (papers) jeonginHome.children.papers = papers;
 
     // The full machine: /etc, /home/{jeongin,memo,stlab}, /tmp, /var, /bin.
     return {

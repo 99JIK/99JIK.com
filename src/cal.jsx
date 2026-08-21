@@ -20,46 +20,67 @@ const DAY_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const sameDay = (a, b) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-// Free slots on the picked day. Working hours only, weekdays only, half-hour
-// blocks, minus anything the calendar already has. It is the same calendar the
-// grid above is drawn from, so a slot offered here is one that is genuinely open.
+// Free slots on the picked day. Working hours only, weekdays only, half-hour blocks,
+// minus anything the calendar already has. It is the same calendar the grid above is
+// drawn from, so a slot offered here is one that is genuinely open.
 //
-// The day is read in the browser's own timezone, which is the visitor's. Someone in
-// another country picking "14:00" means 14:00 where they are, and the request says
-// which zone it was written in so nobody has to guess.
+// The hours belong to HIS clock, not the visitor's. Building them from the browser's
+// local time offered someone in New York 10:00-18:00 EDT, which is the middle of the
+// night in Seoul. Slots are anchored in TZ and labelled in TZ, and the visitor's own
+// time is shown next to them when the two differ.
+const TZ = (window.SITE_DATA.site && window.SITE_DATA.site.timezone) || "Asia/Seoul";
 const HOURS = [10, 18];   // 10:00 to 18:00
 const SLOT = 30;
+
+// How far `tz` sits from UTC at that instant, in ms.
+function tzOffset(ms, tz) {
+  const p = {};
+  const f = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  for (const x of f.formatToParts(ms)) p[x.type] = x.value;
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - ms;
+}
+
+// The instant at which the wall clock in `tz` reads y-mo-d h:mi. Corrected twice so it
+// lands right in zones that observe DST. Seoul does not, but the helper should not
+// quietly depend on that.
+function atZone(y, mo, d, h, mi, tz) {
+  const guess = Date.UTC(y, mo, d, h, mi);
+  return new Date(guess - tzOffset(guess - tzOffset(guess, tz), tz));
+}
+
+const fmtIn = (dt, tz) => new Intl.DateTimeFormat("en-GB", {
+  timeZone: tz, hour12: false, hour: "2-digit", minute: "2-digit" }).format(dt);
+const dateIn = (dt, tz) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(dt);
+const hourIn = (dt, tz) => +fmtIn(dt, tz).slice(0, 2);
 
 function freeSlots(day, events) {
   const out = [];
   const dow = day.getDay();
   if (dow === 0 || dow === 6) return out;
-  const now = new Date();
+  const y = day.getFullYear(), mo = day.getMonth(), d = day.getDate();
+  const now = Date.now();
+  const from = atZone(y, mo, d, 0, 0, TZ).getTime();
+  const to = atZone(y, mo, d + 1, 0, 0, TZ).getTime();
   const busy = events
-    .filter((e) => e._e > new Date(day.getFullYear(), day.getMonth(), day.getDate()) &&
-                   e._s < new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1))
+    .filter((e) => e._e.getTime() > from && e._s.getTime() < to)
     .map((e) => [e._s.getTime(), e._e.getTime()]);
 
   for (let h = HOURS[0]; h < HOURS[1]; h++) {
     for (let m = 0; m < 60; m += SLOT) {
-      const s = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
-      const e = new Date(s.getTime() + SLOT * 60000);
-      if (s <= now) continue;                                   // no booking the past
-      if (busy.some(([bs, be]) => s.getTime() < be && e.getTime() > bs)) continue;
+      const s = atZone(y, mo, d, h, m, TZ);
+      const e = s.getTime() + SLOT * 60000;
+      if (s.getTime() <= now) continue;                         // no booking the past
+      if (busy.some(([bs, be]) => s.getTime() < be && e > bs)) continue;
       out.push(s);
     }
   }
   return out;
 }
 
-// The booking flow takes the whole window body. It started life squeezed into the
-// footer next to the button that opened it, which left the fields fighting over a
-// strip of space. A form needs room, so it gets the room and the calendar steps
-// aside while it is open.
-//
-// The month grid is gone while booking, so the day stepper here replaces it. Hunting
-// for an open day is the common case, hence next-free-day doing the walking instead
-// of the visitor clicking through weekends one at a time.
 function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
   const [slot, setSlot] = React.useState(null);
   const [name, setName] = React.useState(() => {
@@ -91,7 +112,8 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
     openChat: "Open chat", addSelf: "Add to my calendar", close: "Done",
     noChatH: "Chat did not load",
     noChat: "The chat script is blocked, most likely by an extension. Nothing was sent. Mail carries the same request:",
-    mins: "30 min",
+    mins: "30 min", yours: "your time",
+    tz: (a, b) => "Times are his (" + a + "). Yours (" + b + ") is shown next to them.",
   } : {
     head: "시간 요청", back: "뒤로", am: "오전", pm: "오후",
     none: "이 날은 비는 시간이 없습니다", weekend: "주말은 제외됩니다",
@@ -105,19 +127,25 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
     openChat: "채팅 열기", addSelf: "내 캘린더에 넣기", close: "닫기",
     noChatH: "채팅이 로드되지 않았습니다",
     noChat: "확장 프로그램이 채팅 스크립트를 막은 것 같습니다. 아무것도 전송되지 않았습니다. 메일로 같은 내용을 보낼 수 있습니다:",
-    mins: "30분",
+    mins: "30분", yours: "내 시간",
+    tz: (a, b) => "시간은 상대 기준(" + a + ")입니다. 내 시간(" + b + ")을 옆에 함께 적었습니다.",
   };
 
   const p = window.SITE_DATA.profile;
-  const two = (n) => String(n).padStart(2, "0");
-  const hhmm = (d) => two(d.getHours()) + ":" + two(d.getMinutes());
+  const hhmm = (d) => fmtIn(d, TZ);
   const endOf = (s) => new Date(s.getTime() + SLOT * 60000);
-  const range = (s) => s.getFullYear() + "-" + two(s.getMonth() + 1) + "-" + two(s.getDate()) +
-                       " " + hhmm(s) + " - " + hhmm(endOf(s));
+  const range = (s) => dateIn(s, TZ) + " " + hhmm(s) + " - " + hhmm(endOf(s)) + " " + TZ;
+  // Two clocks only when there are two. A visitor in Seoul sees one time, once.
+  const elsewhere = !!zone && zone !== TZ;
+  const sameDate = (s) => dateIn(s, zone) === dateIn(s, TZ);
+  const mine = (s) => (sameDate(s) ? "" : dateIn(s, zone) + " ") +
+                      fmtIn(s, zone) + " - " + fmtIn(endOf(s), zone) + " " + zone;
+  const mineShort = (s) => (sameDate(s) ? "" : dateIn(s, zone).slice(5) + " ") + fmtIn(s, zone);
 
   const body = () => [
     lang === "en" ? "[Meeting request]" : "[약속 요청]",
-    (lang === "en" ? "when" : "희망 시간") + ": " + range(slot) + " (" + zone + ")",
+    (lang === "en" ? "when" : "희망 시간") + ": " + range(slot) +
+      (elsewhere ? "  /  " + mine(slot) : ""),
     (lang === "en" ? "name" : "이름") + ": " + name.trim(),
     contact.trim() ? (lang === "en" ? "contact" : "연락처") + ": " + contact.trim() : null,
     why.trim() ? (lang === "en" ? "about" : "용건") + ": " + why.trim() : null,
@@ -177,7 +205,7 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
             <Icon name="calendar" size={18} />
             <div className="book-card-x">
               <div className="book-card-t">{range(sent.when)}</div>
-              <div className="book-card-s">{name.trim()}{zone ? "  ·  " + zone : ""}</div>
+              <div className="book-card-s">{name.trim()}{elsewhere ? "  ·  " + mine(sent.when) : ""}</div>
             </div>
           </div>
           <p className="book-note">{ok ? T.done : T.noChat}</p>
@@ -224,8 +252,10 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
           <button type="button" onClick={() => stepDay(-1)} aria-label="previous day">{"<"}</button>
           <span className="book-day">{window.CALENDAR.fmtDay(day, lang)}</span>
           <button type="button" onClick={() => stepDay(1)} aria-label="next day">{">"}</button>
-          {zone && <span className="book-zone">{zone}</span>}
+          <span className="book-zone">{TZ}</span>
         </div>
+
+        {elsewhere && <p className="book-note">{T.tz(TZ, zone)}</p>}
 
         <form id="bookq" className="book-form" onSubmit={submit}>
           {slots.length === 0 ? (
@@ -238,8 +268,8 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
             </div>
           ) : (
             <div role="radiogroup" aria-label={T.head}>
-              {group(T.am, slots.filter((s) => s.getHours() < 12))}
-              {group(T.pm, slots.filter((s) => s.getHours() >= 12))}
+              {group(T.am, slots.filter((s) => hourIn(s, TZ) < 12))}
+              {group(T.pm, slots.filter((s) => hourIn(s, TZ) >= 12))}
             </div>
           )}
 
@@ -269,7 +299,9 @@ function BookingPanel({ lang, day, setDay, events, onClose, onOpenChat }) {
           ? <span className="book-note">{T.needSlot}</span>
           : !name.trim()
             ? <span className="book-note">{T.needName}</span>
-            : <span className="book-sel">{hhmm(slot)} <span className="book-note">{T.mins}</span></span>}
+            : <span className="book-sel">{hhmm(slot)}
+                <span className="book-note">{T.mins}{elsewhere ? "  ·  " + mineShort(slot) + " " + T.yours : ""}</span>
+              </span>}
         <span className="book-sp" />
         <button type="button" className="book-link" onClick={onClose}>{T.cancel}</button>
         {window.SITE_DATA.site.bookingUrl && (

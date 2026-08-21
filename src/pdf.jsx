@@ -55,16 +55,25 @@ export function PdfViewer({ lang, wm, path }) {
     const ctl = new AbortController();
     setState({ loading: true });
     fetch(toRaw(src), { signal: ctl.signal })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
+      .then((r) => {
+        if (!r.ok) { const e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+        return r.blob();
+      })
       .then((b) => {
         if (dead) return;
         url = URL.createObjectURL(b.type === "application/pdf" ? b : new Blob([b], { type: "application/pdf" }));
         setState({ loading: false, url, bytes: b.size });
       })
       .catch((e) => {
-        // Almost always CORS. The host may still permit framing, so the iframe gets
-        // pointed at the URL directly and the note says the picture may stay empty.
-        if (!dead) setState({ loading: false, direct: src, why: e.message || String(e) });
+        if (dead) return;
+        // A status code means the server answered and the answer was no. Framing the
+        // same URL would frame the same error page, so say what happened instead of
+        // falling back to a fallback that cannot work.
+        if (e.status) { setState({ loading: false, status: e.status }); return; }
+        // No status: the fetch never got through, which is CORS almost every time.
+        // The host may still permit framing, so point the iframe at the URL and let
+        // the note say the picture may stay empty.
+        setState({ loading: false, direct: src, why: e.message || String(e) });
       });
     return () => {
       dead = true; ctl.abort();
@@ -76,11 +85,13 @@ export function PdfViewer({ lang, wm, path }) {
     title: "PDF", ko: "Korean", en: "English",
     loading: "fetching...", open: "open in a new tab", save: "save",
     missing: "no such file", unreadable: "this file names no PDF to fetch",
+    gone: "nothing at this address (404)", http: "the server refused this: HTTP",
     direct: "the host would not hand over the bytes, so this is framed directly and may stay blank",
   } : {
     title: "PDF", ko: "한국어", en: "English",
     loading: "가져오는 중...", open: "새 탭에서 열기", save: "저장",
     missing: "파일이 없습니다", unreadable: "이 파일에는 가져올 PDF 주소가 없습니다",
+    gone: "이 주소에 파일이 없습니다 (404)", http: "서버가 거부했습니다: HTTP",
     direct: "서버가 바이트를 내주지 않아 주소를 그대로 프레임에 넣었습니다. 비어 있을 수 있습니다",
   };
 
@@ -132,6 +143,10 @@ export function PdfViewer({ lang, wm, path }) {
           <div className="pdfv-msg warn">{T.unreadable}: {target.unreadable}</div>
         ) : state.loading ? (
           <div className="pdfv-msg">{T.loading}</div>
+        ) : state.status ? (
+          <div className="pdfv-msg warn">
+            {state.status === 404 ? T.gone : T.http + " " + state.status}
+          </div>
         ) : state.url ? (
           <iframe src={state.url} title={target.name} />
         ) : (
