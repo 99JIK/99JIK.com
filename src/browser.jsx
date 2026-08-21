@@ -100,7 +100,7 @@ const REFUSED = {
   "www.bing.com": "X-Frame-Options: SAMEORIGIN",
 };
 
-export function Browser({ lang, wm, initialUrl }) {
+export function Browser({ lang, wm, initialUrl, onOpen }) {
   const marks = bookmarks(lang);
   const first = initialUrl || (marks[0] && marks[0].url) || "https://" + window.SITE_DATA.site.domain;
 
@@ -123,6 +123,8 @@ export function Browser({ lang, wm, initialUrl }) {
   const go = (raw) => {
     const next = resolve(raw, lang);
     if (!next) return;
+    // A PDF belongs in the PDF window, which knows the two ways to show one.
+    if (onOpen && window.looksLikePdf(next.url)) { onOpen("cv", next.url); return; }
     setHistory((h) => [...h.slice(0, at + 1), next]);
     setAt((n) => n + 1);
     setTyped(next.url);

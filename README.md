@@ -97,9 +97,16 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 
 기본 북마크는 헤더를 실제로 찍어서 열리는 것만 넣었습니다. 주소창에 점 없는 입력은 검색어로 보고 위키백과로 보냅니다. Google, Bing, DuckDuckGo가 전부 프레이밍을 거부해서 여기서 실제로 되는 검색은 그것뿐입니다.
 
-### 이력서 뷰어
+### PDF 뷰어
 
-`raw.githubusercontent.com`은 `X-Frame-Options: deny`를 보내므로 PDF를 iframe에 바로 못 넣습니다. 대신 `Access-Control-Allow-Origin: *`을 보내므로 바이트를 fetch할 수 있고, blob URL은 same-origin이라 프레이밍 헤더가 적용되지 않습니다. 브라우저 내장 뷰어가 그대로 렌더합니다. 라이브러리도 빌드 단계도 없고 CV는 다른 저장소에 그대로 있습니다.
+PDF를 화면에 띄우는 방법은 둘이고 **각각 다른 헤더에 막힙니다.** 그래서 둘 다 시도합니다.
+
+1. **바이트를 fetch해서 blob URL로.** blob은 same-origin이라 `X-Frame-Options`가 적용되지 않습니다. 대신 서버가 교차 출처 읽기를 허용해야 합니다. `raw.githubusercontent.com`과 `arxiv.org`는 `Access-Control-Allow-Origin: *`을 보내지만 대부분의 서버는 아무것도 안 보냅니다.
+2. **URL을 iframe에 직접.** CORS는 무관하지만 서버가 프레이밍을 허용해야 합니다.
+
+1이 실패하면 2로 떨어지고, 그때는 비어 있을 수 있다고 창 아래에 적습니다. 둘 다 막는 서버는 보여줄 방법이 없고, 회색 사각형 대신 그렇게 말하고 링크를 줍니다.
+
+이력서는 `~/Desktop/이력서.pdf` 파일이고 창은 **그 파일에서 소스를 읽습니다.** 한국어와 영어가 둘 다 있을 때만 토글이 나옵니다. 다른 PDF를 넣으면 그대로 열립니다. `xdg-open`, 파일 탐색기, 브라우저 주소창 전부 PDF를 이 창으로 넘깁니다. 무엇이 PDF인지는 [fs.js](src/fs.js)의 `looksLikePdf` 하나가 정합니다. 확장자뿐 아니라 `/pdf/` 경로도 봅니다. arXiv가 확장자 없이 서빙하는데 여기서 열릴 가능성이 가장 높은 PDF라서입니다.
 
 ### 음악
 

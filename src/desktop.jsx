@@ -632,7 +632,7 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
                onPointerDown={hidden ? undefined : () => focus(win.id)}>
             <WindowBoundary app={appName(win.app)} lang={lang} onClose={() => close(win.id)}>
             {win.app === "terminal" ? React.cloneElement(children, { wm })
-              : win.app === "browser" ? <Browser key={win.nonce} lang={lang} wm={wm} initialUrl={win.arg} />
+              : win.app === "browser" ? <Browser key={win.nonce} lang={lang} wm={wm} initialUrl={win.arg} onOpen={open} />
               : win.app === "music" ? <MusicPlayer lang={lang} wm={wm} />
               : win.app === "cv" ? <PdfViewer key={win.nonce} lang={lang} wm={wm} path={win.arg} />
               : win.app === "files" ? <Files lang={lang} wm={wm} onOpen={open} />

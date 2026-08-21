@@ -695,7 +695,11 @@ check("the CV is a file, and the PDF window is a PDF window", () => {
   if (dir.children["cv.desktop"]) throw new Error("the CV launcher is back alongside the file");
 
   const v = readFileSync(new URL("../src/pdf.jsx", import.meta.url), "utf8");
-  if (!/node && node\.pdf/.test(v)) throw new Error("the viewer ignores the file it was opened on");
+  if (!/const pdf = node\.pdf/.test(v)) throw new Error("the viewer ignores the file it was opened on");
+  // A .pdf node with no sources must say so rather than quietly showing the CV.
+  if (!/unreadable/.test(v)) throw new Error("a PDF file with no source falls back to the CV");
+  // Two ways to show a PDF, each blocked by a different header, so both are tried.
+  if (!/state\.direct/.test(v)) throw new Error("no fallback when the bytes cannot be fetched");
 
   // ...and both openers hand it the path.
   if (!flat("xdg-open ~/Desktop/이력서.pdf").includes("Desktop")) {
@@ -703,6 +707,31 @@ check("the CV is a file, and the PDF window is a PDF window", () => {
   }
   const fm = readFileSync(new URL("../src/files.jsx", import.meta.url), "utf8");
   if (!/app: "cv", arg: path/.test(fm)) throw new Error("the file manager does not pass the path");
+  return true;
+});
+
+check("a PDF anywhere goes to the PDF window", () => {
+  const win = (cmd, app) => {
+    const b = run(cmd).find((x) => x.kind === "mode" && x.action === "open-window");
+    if (!b) throw new Error(`${cmd} opened no window`);
+    if (b.app !== app) throw new Error(`${cmd} opened ${b.app}, expected ${app}`);
+    return b;
+  };
+  // arXiv serves at /pdf/<id> with no extension, and it is the single most likely
+  // PDF anyone here will open, so the test is not just the extension.
+  if (win("xdg-open https://arxiv.org/pdf/1706.03762", "cv").arg !== "https://arxiv.org/pdf/1706.03762") {
+    throw new Error("the URL was not handed to the viewer");
+  }
+  win("xdg-open https://example.com/a/b.pdf", "cv");
+  win("xdg-open https://dblp.org", "browser");
+  if (!window.looksLikePdf("x.PDF?v=2")) throw new Error("the extension test is case sensitive");
+  if (window.looksLikePdf("https://example.com/pdfs")) throw new Error("too eager");
+
+  // One test, because two openers were about to grow their own.
+  for (const f of ["tools.js", "browser.jsx"]) {
+    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
+    if (!src.includes("looksLikePdf")) throw new Error(`${f} has its own idea of what a PDF is`);
+  }
   return true;
 });
 

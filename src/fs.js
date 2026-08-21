@@ -895,5 +895,13 @@
     store.set(CWD_KEY, HOME);
   }
 
+  // What counts as a PDF, in one place because two openers were about to disagree.
+  // An extension is the usual signal, but arXiv serves at /pdf/<id> with no
+  // extension at all and that is the single most likely PDF anyone here will open.
+  window.looksLikePdf = (u) => {
+    const s = String(u || "");
+    return /\.pdf(\?|#|$)/i.test(s) || /\/pdf\//i.test(s);
+  };
+
   window.FS = { root, getCwd, setCwd, enter, displayCwd, normalize, resolve, ls, cd, pwd, cat, tree, find, grep, complete, parseFeed };
 })();

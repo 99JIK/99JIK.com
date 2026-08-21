@@ -1195,7 +1195,7 @@ button.term-dot:hover { filter: brightness(1.25); }
 
 /* ===== PDF window ===== */
 .pdfv {
-  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr);
+  height: 100%; display: grid; grid-template-rows: 36px auto minmax(0,1fr) auto;
   background: var(--t-bg); color: var(--t-fg);
   font-family: var(--ui);
   overflow: hidden;
@@ -1216,6 +1216,12 @@ button.term-dot:hover { filter: brightness(1.25); }
   color: var(--t-muted); font-size: 13px; background: var(--t-bg);
 }
 .pdfv-msg.warn { color: var(--t-red); }
+/* Shown when the bytes could not be fetched and the URL is being framed
+   directly, which may or may not produce anything. */
+.pdfv-note {
+  padding: 5px 10px; font-size: 11px; color: var(--t-yellow);
+  background: var(--t-titlebar); border-top: 1px solid var(--t-border);
+}
 .pdfv-msg a { color: var(--t-accent); }
 
 

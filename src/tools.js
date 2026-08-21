@@ -312,7 +312,10 @@
       const a = args[0];
       if (!a) return [err("xdg-open: missing argument")];
       if (/^https?:\/\//.test(a)) {
-        return [{ kind: "mode", action: "open-window", app: "browser", arg: a },
+        // A PDF is a document wherever it lives, and the browser cannot frame
+        // most of them anyway.
+        const app = window.looksLikePdf(a) ? "cv" : "browser";
+        return [{ kind: "mode", action: "open-window", app, arg: a },
                 { kind: "link", href: a, text: a }];
       }
       const { path, node } = FS().resolve(a);
