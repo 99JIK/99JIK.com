@@ -3,7 +3,7 @@
 import * as React from "preact/compat";
 import { useLiveChat } from "./chat.jsx";
 
-function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
+function EasyMode({ onBack, onTheme, currentTheme, lang, onLang, phone }) {
   const d = window.SITE_DATA;
   const p = d.profile;
   const [chatOpen, setChatOpen] = React.useState(false);
@@ -76,7 +76,10 @@ function EasyMode({ onBack, onTheme, currentTheme, lang, onLang }) {
           <select value={currentTheme} onChange={e => onTheme(e.target.value)} className="easy-select" aria-label="theme">
             {Object.entries(window.THEMES).map(([k, v]) => <option key={k} value={k}>{lang === "en" ? v.name : v.label_ko}</option>)}
           </select>
-          <button className="easy-back" onClick={onBack} title={T.backTitle}>{T.backBtn}</button>
+          {/* A phone gets the document and nothing else: the terminal it would open is
+              the thing this view exists to spare it. ?view=terminal still works, and
+              anyone who lands there has the terminal's own way back, so nobody is stuck. */}
+          {!phone && <button className="easy-back" onClick={onBack} title={T.backTitle}>{T.backBtn}</button>}
         </div>
       </div>
 

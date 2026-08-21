@@ -752,7 +752,21 @@ check("a phone lands on the document, a tablet does not", () => {
 
   // The boot log is a terminal flourish in front of a document, and `pre` inside a
   // clipped box cuts every line short on a narrow screen.
-  if (!/if \(isPhone\(\)\) return true;/.test(m)) throw new Error("phones still sit through the boot log");
+  if (!/if \(isPhone\(\)\) return true;/.test(m)) throw new Error("phones still sit through the boot log");
+
+  // "Just the document" means the header does not offer the terminal either. One
+  // source of truth: the phone test stays in JS and is handed down, rather than a
+  // CSS copy of the same breakpoints that can drift away from it.
+  if (!/<EasyMode phone=\{phone\}/.test(m)) throw new Error("easy mode is not told it is on a phone");
+  if (!/React\.useState\(isPhone\)/.test(m)) throw new Error("the phone test is recomputed on render");
+  const e = readFileSync(new URL("../src/easy-mode.jsx", import.meta.url), "utf8");
+  if (!/\{!phone && <button className="easy-back"/.test(e)) throw new Error("phones are still offered the terminal");
+
+  // Nobody gets stuck: ?view=terminal works, and the terminal keeps its own way out
+  // whenever it is running without a window manager, which is every phone.
+  const t = readFileSync(new URL("../src/terminal-view.jsx", import.meta.url), "utf8");
+  if (!/\{!wm && \(/.test(t) || !/className="term-easy" onClick=\{onEasy\}/.test(t))
+    throw new Error("a phone that reaches the terminal cannot get back out");
 
   // An explicit ?view= beats the device, or the link handed to a recruiter changes
   // meaning depending on the phone they open it on.

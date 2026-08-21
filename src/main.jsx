@@ -141,6 +141,8 @@ function App() {
   // Read once: if the window is resized past the breakpoint mid-visit, the view the
   // visitor is reading should not swap out from under them.
   const [defMode] = React.useState(defaultModeFor);
+  // Same read-once treatment: the button must not appear halfway through a rotation.
+  const [phone] = React.useState(isPhone);
   const [mode, setMode] = React.useState(() => viewFromUrl() || defMode);
   const [bootDone, setBootDone] = React.useState(() => {
     // Reduced motion skips the boot log entirely: it is 28 timed lines of pure motion.
@@ -199,7 +201,7 @@ function App() {
                    onEasy={() => setMode("easy")} cold={cameUpCold}>
             <TerminalView onModeChange={setMode} onTheme={(t) => setTw({ theme: t })} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
           </Desktop>
-        : <EasyMode onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
+        : <EasyMode phone={phone} onBack={() => setMode("terminal")} onTheme={(t) => setTw({ theme: t })} currentTheme={tweaks.theme} lang={tweaks.lang} onLang={(l) => setTw({ lang: l })} />
       }
     </>
   );
