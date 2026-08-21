@@ -118,14 +118,18 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
     if (saved) return {
       wins: saved.wins.map((w) => ({ ...w, id: ++seq, nonce: 0 })), ws: saved.ws, restored: true,
     };
-    // A window, not a full screen: the desktop is part of what this is, and hiding
-    // it behind the first window on arrival gives that away for nothing. Anything
-    // with no room for windows still gets the whole screen.
+    // A desktop comes up as a desktop. Opening a window on arrival covers the thing
+    // the visitor came to see and picks a starting point for them; the icons and the
+    // dock are right there, so let them pick.
+    //
+    // Without windowing there is no desktop to arrive at and no dock to open anything
+    // from: the terminal is the whole screen, and it has to be there or the visitor
+    // gets a blank page.
     const fits = windowingAvailable();
     return {
-      wins: [{ id: ++seq, app: "terminal", state: fits ? "windowed" : "max",
-               ws: 0, z: 1, nonce: 0, snap: fits ? null : "max",
-               ...defaultRect("terminal", 0) }],
+      wins: fits ? [] : [{ id: ++seq, app: "terminal", state: "max",
+                           ws: 0, z: 1, nonce: 0, snap: "max",
+                           ...defaultRect("terminal", 0) }],
       ws: 0, restored: false,
     };
   });

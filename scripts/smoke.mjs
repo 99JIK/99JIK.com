@@ -735,6 +735,27 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
+check("a fresh desktop comes up empty, a fresh terminal does not", () => {
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+  const i = d.indexOf("const fits = windowingAvailable();");
+  if (i < 0) throw new Error("cannot find what a first visit opens");
+  const seg = d.slice(i, i + 700);
+
+  // With room for windows, arrival is the desktop itself: no window covering it.
+  if (!seg.includes("wins: fits ? []")) throw new Error("a window still opens on top of a fresh desktop");
+
+  // Without it there is no dock and no icons, and TerminalView is only ever rendered
+  // inside a window, so dropping that window would leave a blank page.
+  if (!seg.includes('app: "terminal", state: "max"')) throw new Error("no windowing and no terminal is a blank page");
+  if (!d.includes('win.app === "terminal" ? React.cloneElement(children'))
+    throw new Error("the terminal is no longer rendered inside a window; recheck the empty case");
+
+  // Nothing may assume a window exists.
+  if (d.includes("wins[0]") || d.includes("winsRef.current[0]"))
+    throw new Error("something indexes the first window");
+  return true;
+});
+
 check("a phone lands on the document, a tablet does not", () => {
   const m = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 
