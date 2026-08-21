@@ -323,6 +323,12 @@ function EasyCalendar({ lang }) {
   if (state.loading) return <div className="easy-dim">{lang === "en" ? "loading..." : "불러오는 중..."}</div>;
   const data = state.data;
   const events = window.CALENDAR.getWeek(data);
+  // Could not be read is not the same as nothing scheduled.
+  if (data.failed) {
+    return <div className="easy-cal-empty"><div className="easy-dim">
+      {lang === "en" ? "The calendar could not be read." : "캘린더를 불러오지 못했습니다."}
+    </div></div>;
+  }
   if (!events.length) {
     return (
       <div className="easy-cal-empty">

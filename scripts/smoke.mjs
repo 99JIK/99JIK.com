@@ -5,7 +5,7 @@
 //
 // Run: `npm run check`
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fallbackHtml } from "./build.mjs";
 import { decode as qrDecode } from "./qr-decode.mjs";
 
@@ -953,6 +953,37 @@ check("Korean never sits in a padded middle column", () => {
         throw new Error(`${cmd} pads a Korean column: "${tail.trim().slice(0, 40)}"`);
       }
     }
+  }
+  return true;
+});
+
+check("a calendar that cannot be read says so", () => {
+  // The last-resort fallback used to carry nine invented meetings and the UI
+  // reported them as freshly synced. Empty and honest beats plausible and false.
+  const cal = readFileSync(new URL("../src/calendar.js", import.meta.url), "utf8");
+  const mock = /const MOCK = \{([^;]*)\};/.exec(cal);
+  if (!mock) throw new Error("no fallback object");
+  if (/title:/.test(mock[1])) throw new Error("the fallback invents events again");
+  if (!/failed: true/.test(mock[1])) throw new Error("the fallback does not mark itself as a failure");
+
+  // ...and both surfaces have to distinguish it from an empty week.
+  for (const f of ["terminal-view.jsx", "easy-mode.jsx"]) {
+    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
+    if (!/data\.failed/.test(src)) throw new Error(`${f} shows an empty calendar as if it loaded`);
+  }
+  return true;
+});
+
+check("nothing in CI writes to the repository", () => {
+  // The daily cron that committed public/calendar.json is gone. The deploy only
+  // refreshes the snapshot inside the runner.
+  const dir = new URL("../.github/workflows/", import.meta.url);
+  const files = readdirSync(dir);
+  if (files.includes("calendar.yml")) throw new Error("the calendar cron is back");
+  for (const f of files) {
+    const y = readFileSync(new URL(f, dir), "utf8");
+    if (/git (commit|push)/.test(y)) throw new Error(`${f} writes to the repository`);
+    if (/contents:\s*write/.test(y)) throw new Error(`${f} asks for write permission`);
   }
   return true;
 });

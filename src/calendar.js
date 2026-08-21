@@ -1,31 +1,14 @@
 // Calendar loader. Reads the Google Calendar API directly when a browser key is
 // configured, falls back to the public/calendar.json snapshot the deploy refreshes,
 // and falls back again to the mock below so local development always has something.
-// The mock is deliberately generic: it stands in for a calendar, and inventing
-// specific work here would put words in the owner's mouth.
+// If all three fail there is nothing to show, and the UI says that rather than
+// inventing events.
 (function () {
-  const MOCK = {
-    updated: new Date().toISOString(),
-    source: "mock",
-    events: [
-      { start: isoAt(0, 10, 0),  end: isoAt(0, 11, 30), title: "Advisor 1:1",              location: "IT-3 421",       tag: "lab" },
-      { start: isoAt(0, 14, 0),  end: isoAt(0, 15, 0),  title: "Paper reading: ICSE'25",   location: "zoom",           tag: "lab" },
-      { start: isoAt(0, 19, 0),  end: isoAt(0, 20, 30), title: "Gym",                       location: "",               tag: "life" },
-      { start: isoAt(1,  9, 30), end: isoAt(1, 11, 0),  title: "Lab seminar",               location: "IT-3 507",       tag: "lab" },
-      { start: isoAt(1, 13, 0),  end: isoAt(1, 14, 0),  title: "Writing block",             location: "",               tag: "focus" },
-      { start: isoAt(2, 15, 0),  end: isoAt(2, 16, 30), title: "Mentoring: undergrad",     location: "online",         tag: "teach" },
-      { start: isoAt(3, 11, 0),  end: isoAt(3, 12, 0),  title: "TIL review",                location: "",               tag: "focus" },
-      { start: isoAt(4, 18, 0),  end: isoAt(4, 21, 0),  title: "Dinner w/ lab",             location: "북구 복현동",     tag: "life" },
-      { start: isoAt(6, 10, 0),  end: isoAt(6, 18, 0),  title: "Deep work",                 location: "",               tag: "focus" },
-    ],
-  };
+  // The last resort, when the API is unreachable and the snapshot is missing too.
+  // It is empty on purpose. A calendar that cannot be read should say so, not fill
+  // itself with plausible-looking meetings that never happened.
+  const MOCK = { updated: null, source: "mock", failed: true, events: [] };
 
-  function isoAt(dayOffset, h, m) {
-    const d = new Date();
-    d.setDate(d.getDate() + dayOffset);
-    d.setHours(h, m, 0, 0);
-    return d.toISOString();
-  }
 
   let CACHE = null;
 

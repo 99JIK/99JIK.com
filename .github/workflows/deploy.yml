@@ -47,9 +47,14 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
-      # The browser reads the calendar live through the Calendar API. This only
-      # refreshes the snapshot that ships in the build as a fallback, and it is never
-      # committed, so it cannot pile up bot commits or conflict with anything.
+      # The browser reads the calendar live through the Calendar API, so this is not
+      # a sync: it refreshes the snapshot that ships as the fallback. That matters
+      # for anyone whose browser strips Referer, since the API answers 403 without
+      # one, and for local development, where localhost is not on the allow list.
+      #
+      # public/calendar.json stays committed so a failed refresh still leaves a real
+      # snapshot rather than nothing. The daily cron that used to commit it is gone;
+      # nothing writes to the repository from CI any more.
       # Google being briefly unreachable is no reason to block a deploy.
       - name: Refresh calendar snapshot
         run: node scripts/fetch-calendar.mjs

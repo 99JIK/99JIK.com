@@ -1322,6 +1322,14 @@ function NowBlock({ view, lang }) {
     ? (lang === "en" ? "live" : "실시간")
     : window.CALENDAR.relativeAgo(data.updated, lang);
 
+  // Nothing scheduled and could not be read are different answers, and saying
+  // the first when the second is true is the kind of quiet lie this site avoids.
+  if (data.failed) {
+    return <div className="t-line warn">
+      {lang === "en" ? "calendar: could not be read." : "캘린더를 불러오지 못했습니다."}
+    </div>;
+  }
+
   if (!events.length) {
     return (
       <>
