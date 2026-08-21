@@ -735,6 +735,45 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
+check("public/home mirrors into the filesystem", () => {
+  // The build injects __DROP__; loaded bare it is undefined and the tree is untouched,
+  // which is what every other check in this file has been running against.
+  const src = readFileSync(new URL("../src/fs.js", import.meta.url), "utf8");
+  const DROP = [
+    { path: "Desktop/scratch.md", size: 60, mtime: "2026-08-21", kind: "text", content: ["# note"] },
+    { path: "notes/todo.txt", size: 24, mtime: "2026-08-21", kind: "text", content: ["plain text"] },
+    { path: "notes/blob.bin", size: 300, mtime: "2026-08-21", kind: "blob" },
+    { path: "papers/kcc2026.pdf", size: 60, mtime: "2026-08-21", kind: "pdf" },
+  ];
+  const keep = window.FS;
+  try {
+    new Function("__DROP__", src)(DROP);
+    const n = (p) => window.FS.resolve(p).node;
+
+    // The tree on disk is the tree in the window.
+    if (n("/home/jeongin/papers/kcc2026.pdf").pdf.ko !== "/home/papers/kcc2026.pdf")
+      throw new Error("pdf node does not point at the served url");
+    if (n("/home/jeongin/notes/todo.txt").content[0] !== "plain text")
+      throw new Error("text was not inlined");
+    // Nothing here renders a binary, so it is handed to the browser rather than faked.
+    if (n("/home/jeongin/notes/blob.bin").type !== "link")
+      throw new Error("binary did not become a link");
+
+    // Grafting into a directory that already exists must not wipe what was there.
+    const desk = n("/home/jeongin/Desktop").children;
+    if (!desk["scratch.md"]) throw new Error("dropped file never arrived");
+    if (!desk["README.md"] || !desk["이력서.pdf"])
+      throw new Error("the graft destroyed the built-in Desktop files");
+    if (Object.keys(desk).length < 5) throw new Error("launchers were lost in the graft");
+    if (n("/home/jeongin/notes").type !== "dir") throw new Error("new directory not created");
+    return true;
+  } finally {
+    // Later checks share this filesystem, so put the real one back.
+    new Function(src)();
+    if (!window.FS) window.FS = keep;
+  }
+});
+
 check("booking asks, and says that it is asking", () => {
   // Nothing on this page can write to the owner's calendar: the browser key is
   // read-only and creating an event would need OAuth from him, not from a visitor.

@@ -137,19 +137,33 @@
       };
     });
 
-    // Whatever PDFs are sitting in public/papers, injected at build time. Same
-    // origin, so the viewer's blob fetch always succeeds: no CORS, no framing rules,
-    // nothing to negotiate. The dir is left out entirely when there are none rather
-    // than showing an empty folder.
-    const paperFiles = typeof __PAPERS__ !== "undefined" ? __PAPERS__ : [];
-    const papers = paperFiles.length ? {
-      type: "dir", mtime: dayAgo(1),
-      children: Object.fromEntries(paperFiles.map((f, i) => [f, {
-        type: "file", mtime: dayAgo(3 + i), size: 0,
-        pdf: { ko: "/papers/" + f },
-        content: ["%PDF (fetched on open)", "/papers/" + f],
-      }])),
-    } : null;
+    // Files sitting in public/home, injected at build time. The tree on disk is the
+    // tree here: public/home/papers/x.pdf lands at ~/papers/x.pdf. Same origin, so
+    // the PDF viewer's blob fetch always succeeds and there is nothing to negotiate.
+    const drop = typeof __DROP__ !== "undefined" ? __DROP__ : [];
+
+    // Merge one dropped file into a children map, making the directories it needs.
+    // A dropped file wins over a built-in of the same name: putting a file there is
+    // a deliberate act, so it should be the one that shows up.
+    function graft(children, e) {
+      const parts = e.path.split("/");
+      const name = parts.pop();
+      let at = children;
+      for (const seg of parts) {
+        if (!at[seg] || at[seg].type !== "dir") at[seg] = { type: "dir", mtime: e.mtime, children: {} };
+        at = at[seg].children;
+      }
+      const url = "/home/" + e.path;
+      if (e.kind === "pdf") {
+        at[name] = { type: "file", mtime: e.mtime, size: e.size,
+                     pdf: { ko: url }, content: ["%PDF (fetched on open)", url] };
+      } else if (e.kind === "text") {
+        at[name] = { type: "file", mtime: e.mtime, size: e.size, content: e.content };
+      } else {
+        // Nothing here can render it, so hand it to the browser instead of pretending.
+        at[name] = { type: "link", mtime: e.mtime, size: e.size, target: url };
+      }
+    }
 
     // Jeongin's home - all the personal / portfolio content lives here.
     const jeonginHome = {
@@ -284,7 +298,7 @@
       },
     };
 
-    if (papers) jeonginHome.children.papers = papers;
+    for (const e of drop) graft(jeonginHome.children, e);
 
     // The full machine: /etc, /home/{jeongin,memo,stlab}, /tmp, /var, /bin.
     return {

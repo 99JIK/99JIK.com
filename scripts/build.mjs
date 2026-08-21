@@ -13,12 +13,39 @@ const OUT = "dist";
 // instead of being hand-maintained in data.js.
 const BUILD_DATE = new Date().toISOString().slice(0, 10);
 
-// Papers are real files under public/papers, so the list is whatever is on disk
-// rather than a second copy of it in data.js that can drift. Drop a PDF in, rebuild,
-// and it shows up in ~/papers and opens in the viewer.
-const PAPERS = existsSync("public/papers")
-  ? readdirSync("public/papers").filter((f) => f.toLowerCase().endsWith(".pdf")).sort()
-  : [];
+// public/home mirrors /home/jeongin. Whatever tree is on disk there shows up in the
+// virtual filesystem at the matching path, so adding a file is adding a file: no
+// data.js entry, no registration step. It is served from the same origin, which is
+// why the PDF viewer never has to negotiate CORS or framing for these.
+//
+// Text is inlined at build time so `cat` and the viewer have something to read.
+// Anything else becomes a link node, because the honest thing for a binary the OS
+// cannot render is to hand it to the browser rather than to fake a preview.
+const DROP_ROOT = "public/home";
+const TEXT = /\.(md|txt|json|csv|log|ya?ml|toml|ini|conf|sh|py|js|jsx|ts|tsx|c|h|cpp|java|sql|gitignore)$/i;
+const INLINE_MAX = 256 * 1024;   // past this it bloats the bundle for no reading benefit
+
+function walkDrop(dir, rel = "") {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const name of readdirSync(dir).sort()) {
+    if (name.startsWith(".")) continue;               // .gitkeep and friends stay out
+    const abs = join(dir, name);
+    const path = rel ? rel + "/" + name : name;
+    const st = statSync(abs);
+    if (st.isDirectory()) { out.push(...walkDrop(abs, path)); continue; }
+    const e = { path, size: st.size, mtime: st.mtime.toISOString().slice(0, 10) };
+    if (/\.pdf$/i.test(name)) e.kind = "pdf";
+    else if (TEXT.test(name) && st.size <= INLINE_MAX) {
+      e.kind = "text";
+      e.content = readFileSync(abs, "utf8").replace(/\r\n/g, "\n").split("\n");
+    } else e.kind = "blob";
+    out.push(e);
+  }
+  return out;
+}
+const DROP = walkDrop(DROP_ROOT);
+if (DROP.length) console.log("dropped into ~/: " + DROP.map((d) => d.path).join(", "));
 
 
 
@@ -40,7 +67,7 @@ const esbuildOpts = {
   loader: { ".jsx": "jsx", ".js": "js" },
   define: {
     __BUILD_DATE__: JSON.stringify(BUILD_DATE),
-    __PAPERS__: JSON.stringify(PAPERS),
+    __DROP__: JSON.stringify(DROP),
   },
   logLevel: "info",
 };
