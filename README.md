@@ -58,7 +58,7 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 
 | 키 | 동작 |
 |---|---|
-| `Ctrl+Alt+T/F/B/C/M/V/,` | 앱 실행 또는 포커스 |
+| `Ctrl+Alt+T/F/B/K/C/P/V/,` | 앱 실행 또는 포커스 |
 | `Ctrl+Alt+` `` ` `` | 창 순환 (`Shift`로 역순) |
 | `Ctrl+Alt+↑ / ↓` | 최대화 / 복원 후 최소화 |
 | `Ctrl+Alt+Shift+←/→` | 반쪽 스냅 |
@@ -66,6 +66,8 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 | `Ctrl+Alt+Q / D / L` | 닫기 / 바탕화면 보기 / 잠그기 |
 
 전체 목록은 설정 창에도 있습니다. 안 그러면 아무도 못 찾습니다.
+
+설정 창에는 **마지막 `Ctrl+Alt` 입력**의 `e.code`와 `e.key`도 표시됩니다. 단축키가 안 먹을 때 원인이 두 가지로 갈리기 때문입니다. `Control`이나 `Alt`만 나오면 글자 키가 브라우저까지 오지 않은 것이고(다른 프로그램이 전역 단축키로 잡고 있음), 이건 웹 페이지가 되찾을 수 없습니다. 음악이 `M`이 아니라 `P`인 이유가 이것입니다.
 
 ### 바탕화면은 폴더입니다
 
@@ -80,7 +82,8 @@ python -m http.server 8000 --directory dist   # http://localhost:8000
 | 브라우저 | [browser.jsx](src/browser.jsx) | 프레이밍을 허용하는 사이트만 |
 | 채팅 | [chat.jsx](src/chat.jsx) | 대화는 모듈 저장소에 |
 | 음악 | [mpv.jsx](src/mpv.jsx) | 플레이어는 데스크톱 소유 |
-| 이력서 | [pdf.jsx](src/pdf.jsx) | blob URL로 렌더 |
+| 달력 | [cal.jsx](src/cal.jsx) | 예약은 새 탭으로 |
+| PDF | [pdf.jsx](src/pdf.jsx) | blob URL로 렌더 |
 | 뷰어 | [viewer.jsx](src/viewer.jsx) | 파일당 창 하나 |
 | 설정 | [settings.jsx](src/settings.jsx) | 테마, 언어, 단축키, 배치 초기화 |
 

@@ -291,7 +291,7 @@
   // every screen too small to put windows on.
   function handlerFor(path, node) {
     if (node && node.live === "playlist") return { app: "music" };
-    if (/(^|\/)cv$/.test(path) || /\.pdf$/i.test(path)) return { app: "cv" };
+    if (/(^|\/)cv$/.test(path) || /\.pdf$/i.test(path)) return { app: "cv", arg: path };
     if (node && node.type === "link" && /^https?:\/\//.test(node.target || "")) {
       return { app: "browser", arg: node.target };
     }

@@ -30,7 +30,7 @@ function fmtDate(d) {
 // to "what opens this" cannot drift.
 function handlerFor(path, node) {
   if (node.live === "playlist") return { app: "music" };
-  if (/(^|\/)cv$/.test(path) || /\.pdf$/i.test(path)) return { app: "cv" };
+  if (/(^|\/)cv$/.test(path) || /\.pdf$/i.test(path)) return { app: "cv", arg: path };
   if (node.type === "link" && /^https?:\/\//.test(node.target || "")) {
     return { app: "browser", arg: node.target };
   }

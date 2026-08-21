@@ -16,6 +16,8 @@ import { PdfViewer } from "./pdf.jsx";
 import { Files } from "./files.jsx";
 import { Settings } from "./settings.jsx";
 import { Viewer } from "./viewer.jsx";
+import { CalendarApp } from "./cal.jsx";
+import { Icon } from "./icons.jsx";
 
 const { MIN_W, MIN_H, DOCK_H, WORKSPACES, area, snapZone, snapRect,
         loadLayout, saveLayout, clearLayout } = window.WM;
@@ -35,19 +37,25 @@ export const APPS = {
   // `code` is the physical key, not the character. With a Korean layout active
   // e.key for the M key is a jamo, so Ctrl+Alt+M matched nothing; e.code is
   // KeyM whatever the input method is doing. `key` is only the label.
-  terminal: { glyph: "▶_", ko: "터미널",   en: "Terminal", w: 980, h: 640, key: "T", code: "KeyT", multi: true },
-  files:    { glyph: "▤",  ko: "파일",     en: "Files",    w: 760, h: 520, key: "F", code: "KeyF", multi: true },
-  browser:  { glyph: "◇",  ko: "브라우저", en: "Browser",  w: 900, h: 640, key: "B", code: "KeyB", multi: true },
-  chat:     { glyph: "✉",  ko: "채팅",     en: "Chat",     w: 460, h: 560, key: "C", code: "KeyC" },
-  music:    { glyph: "♪",  ko: "음악",     en: "Music",    w: 480, h: 600, key: "M", code: "KeyM" },
-  cv:       { glyph: "PDF",ko: "이력서",   en: "CV",       w: 760, h: 760, key: "V", code: "KeyV" },
-  settings: { glyph: "⚙",  ko: "설정",     en: "Settings", w: 520, h: 560, key: ",", code: "Comma" },
+  //
+  // `icon` names a path in icons.jsx. These used to be characters, and half of them
+  // came out as the same grey lozenge depending on what the system substituted.
+  terminal: { icon: "terminal", ko: "터미널",   en: "Terminal", w: 980, h: 640, key: "T", code: "KeyT", multi: true },
+  files:    { icon: "files",    ko: "파일",     en: "Files",    w: 760, h: 520, key: "F", code: "KeyF", multi: true },
+  browser:  { icon: "browser",  ko: "브라우저", en: "Browser",  w: 900, h: 640, key: "B", code: "KeyB", multi: true },
+  calendar: { icon: "calendar", ko: "달력",     en: "Calendar", w: 560, h: 640, key: "K", code: "KeyK" },
+  chat:     { icon: "chat",     ko: "채팅",     en: "Chat",     w: 460, h: 560, key: "C", code: "KeyC" },
+  // Not M. Ctrl+Alt+M is a mute hotkey in enough desktop software that the
+  // keydown never reaches the page at all on a machine running one of them.
+  music:    { icon: "music",    ko: "음악",     en: "Music",    w: 480, h: 600, key: "P", code: "KeyP" },
+  cv:       { icon: "document", ko: "이력서",   en: "CV",       w: 760, h: 760, key: "V", code: "KeyV", multi: true },
+  settings: { icon: "settings", ko: "설정",     en: "Settings", w: 520, h: 560, key: ",", code: "Comma" },
   // One window per file rather than one window in total: opening a second note
   // should not close the first, the way it would not in any file viewer.
-  viewer:   { glyph: "≡",  ko: "뷰어",     en: "Viewer",   w: 640, h: 640, multi: true },
+  viewer:   { icon: "viewer",   ko: "뷰어",     en: "Viewer",   w: 640, h: 640, multi: true },
 };
 const APP_KEYS = Object.keys(APPS);
-const DOCK_ORDER = ["terminal", "files", "browser", "chat", "music", "cv"];
+const DOCK_ORDER = ["terminal", "files", "browser", "calendar", "chat", "music"];
 const DESKTOP_DIR = "/home/jeongin/Desktop";
 
 // The desktop is a folder, the way it is on the system this imitates. Icons are the
@@ -59,7 +67,10 @@ function desktopEntries() {
   return Object.entries(node.children).map(([file, n]) => {
     const path = DESKTOP_DIR + "/" + file;
     if (!/\.desktop$/.test(file)) {
-      return { file, path, name: file, glyph: /\.md$/i.test(file) ? "≡" : "·", open: "viewer" };
+      // A plain file on the desktop opens the way it would in the file manager.
+      const pdf = /\.pdf$/i.test(file);
+      return { file, path, name: file, icon: pdf ? "document" : "viewer",
+               open: pdf ? "cv" : "viewer" };
     }
     const fields = {};
     for (const line of n.content || []) {
@@ -69,7 +80,8 @@ function desktopEntries() {
     // Exec has to name an app that exists, or the icon is a button that does
     // nothing. An unknown one falls back to showing the file.
     const exec = APPS[fields.Exec] ? fields.Exec : "viewer";
-    return { file, path, name: fields.Name || file, glyph: fields.Icon || "·",
+    return { file, path, name: fields.Name || file,
+             icon: fields.Icon || (APPS[exec] && APPS[exec].icon) || "viewer",
              title: fields.Comment, open: exec };
   }).sort((a, b) => {
     // Launchers first, in the order the folder lists them; documents after.
@@ -580,10 +592,10 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
 
       <div className="desk-icons">
         {icons.map((it) => (
-          <DeskIcon key={it.file} glyph={it.glyph}
-                    label={APPS[it.open] && it.open !== "viewer" ? appName(it.open) : it.name}
+          <DeskIcon key={it.file} icon={it.icon}
+                    label={/\.desktop$/.test(it.file) ? it.name : it.file}
                     title={it.title || T.hintOpen}
-                    onOpen={() => open(it.open, it.open === "viewer" ? it.path : undefined)} />
+                    onOpen={() => open(it.open, /\.desktop$/.test(it.file) ? undefined : it.path)} />
         ))}
       </div>
 
@@ -622,8 +634,9 @@ export function Desktop({ children, lang, onLang, theme, onTheme, cold, onEasy, 
             {win.app === "terminal" ? React.cloneElement(children, { wm })
               : win.app === "browser" ? <Browser key={win.nonce} lang={lang} wm={wm} initialUrl={win.arg} />
               : win.app === "music" ? <MusicPlayer lang={lang} wm={wm} />
-              : win.app === "cv" ? <PdfViewer lang={lang} wm={wm} />
+              : win.app === "cv" ? <PdfViewer key={win.nonce} lang={lang} wm={wm} path={win.arg} />
               : win.app === "files" ? <Files lang={lang} wm={wm} onOpen={open} />
+              : win.app === "calendar" ? <CalendarApp lang={lang} wm={wm} />
               : win.app === "viewer" ? <Viewer key={win.nonce} lang={lang} wm={wm} path={win.arg} />
               : win.app === "settings"
                 ? <Settings lang={lang} wm={wm} theme={theme} onTheme={onTheme} onLang={onLang}
@@ -706,12 +719,12 @@ function Restored({ text }) {
   return <div className="desk-restored">{text}</div>;
 }
 
-function DeskIcon({ glyph, label, title, onOpen }) {
+function DeskIcon({ icon, label, title, onOpen }) {
   return (
     <button type="button" className="desk-icon" title={title}
             onDblClick={onOpen}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}>
-      <span className="desk-icon-glyph" aria-hidden="true">{glyph}</span>
+      <span className="desk-icon-glyph"><Icon name={icon} size={26} /></span>
       <span className="desk-icon-label">{label}</span>
     </button>
   );
@@ -791,7 +804,7 @@ function Dock({ order, appName, lang, running, ws, setWs, focused, onPick, onLau
                       onPick(mine[(from + 1) % mine.length]);
                     }}
                     onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onLaunch(app); } }}>
-              <span aria-hidden="true">{APPS[app].glyph}</span>
+              <Icon name={APPS[app].icon} size={19} />
             </button>
           );
         })}
@@ -801,7 +814,7 @@ function Dock({ order, appName, lang, running, ws, setWs, focused, onPick, onLau
                   className={"dock-item running dock-win" + (w.id === focused && w.state !== "min" ? " on" : "")}
                   title={winLabel(w, lang)} aria-label={winLabel(w, lang)}
                   onClick={() => onPick(w)}>
-            <span aria-hidden="true">{APPS[w.app].glyph}</span>
+            <Icon name={APPS[w.app].icon} size={19} />
           </button>
         ))}
       </div>

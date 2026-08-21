@@ -262,7 +262,7 @@ check("the desktop is a folder, and its icons are its contents", () => {
   if (!d.includes("desktopEntries")) throw new Error("the icons are not read from the folder");
   if (/const DESK_ICONS = \[/.test(d)) throw new Error("a hardcoded icon list is back");
 
-  const apps = [...d.matchAll(/^  (\w+):\s*\{ glyph:/gm)].map((m) => m[1]);
+  const apps = [...d.matchAll(/^  (\w+):\s*\{ icon:/gm)].map((m) => m[1]);
   for (const [file, node] of Object.entries(dir.children)) {
     if (!/\.desktop$/.test(file)) continue;
     const exec = (node.content || []).find((l) => l.startsWith("Exec="));
@@ -659,6 +659,50 @@ check("raising a window takes the keyboard with it", () => {
   if (!d.includes("winRefs")) throw new Error("windows are not registered for focusing");
   const focus = d.slice(d.indexOf("const focus = (id) =>"), d.indexOf("const open = (app, arg, opts)"));
   if (!/grab\(id\)/.test(focus)) throw new Error("focus() does not move DOM focus");
+  return true;
+});
+
+check("every app icon is a drawn shape that exists", () => {
+  // The icons used to be characters, and which shape a visitor saw depended on what
+  // their system substituted for the ones the font lacked.
+  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
+  if (/glyph:/.test(d.slice(d.indexOf("export const APPS"), d.indexOf("const APP_KEYS")))) {
+    throw new Error("an app still names its icon as a character");
+  }
+  const icons = readFileSync(new URL("../src/icons.jsx", import.meta.url), "utf8");
+  const drawn = new Set([...icons.matchAll(/^  ([a-z]+): /gm)].map((m) => m[1]));
+  for (const m of d.matchAll(/icon: "([a-z]+)"/g)) {
+    if (!drawn.has(m[1])) throw new Error(`no icon drawn for "${m[1]}"`);
+  }
+  // The launchers in the filesystem name the same set.
+  const dir = window.FS.resolve("/home/jeongin/Desktop").node;
+  for (const [file, node] of Object.entries(dir.children)) {
+    if (!/\.desktop$/.test(file)) continue;
+    const line = (node.content || []).find((l) => l.startsWith("Icon="));
+    if (!line) throw new Error(`${file} has no Icon`);
+    if (!drawn.has(line.slice(5).trim())) throw new Error(`${file} names an icon that is not drawn`);
+  }
+  return true;
+});
+
+check("the CV is a file, and the PDF window is a PDF window", () => {
+  // It used to be a launcher whose two URLs were baked into the component. It is a
+  // document, and the window that opens it reads its sources from the file.
+  const dir = window.FS.resolve("/home/jeongin/Desktop").node;
+  const cv = Object.entries(dir.children).find(([f]) => /\.pdf$/i.test(f));
+  if (!cv) throw new Error("there is no PDF on the desktop");
+  if (!cv[1].pdf || !cv[1].pdf.ko || !cv[1].pdf.en) throw new Error("the PDF file names no sources");
+  if (dir.children["cv.desktop"]) throw new Error("the CV launcher is back alongside the file");
+
+  const v = readFileSync(new URL("../src/pdf.jsx", import.meta.url), "utf8");
+  if (!/node && node\.pdf/.test(v)) throw new Error("the viewer ignores the file it was opened on");
+
+  // ...and both openers hand it the path.
+  if (!flat("xdg-open ~/Desktop/이력서.pdf").includes("Desktop")) {
+    throw new Error("xdg-open does not pass the path to the viewer");
+  }
+  const fm = readFileSync(new URL("../src/files.jsx", import.meta.url), "utf8");
+  if (!/app: "cv", arg: path/.test(fm)) throw new Error("the file manager does not pass the path");
   return true;
 });
 

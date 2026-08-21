@@ -11,13 +11,19 @@
 
 import * as React from "preact/compat";
 
-export function PdfViewer({ lang, wm }) {
+export function PdfViewer({ lang, wm, path }) {
   const S = window.SITE_DATA.site;
   // An English reader gets the English CV first, and either can switch.
   const [which, setWhich] = React.useState(lang === "en" ? "en" : "ko");
   const [state, setState] = React.useState({ loading: true });
 
-  const src = which === "en" ? S.cvEn : S.cvKo;
+  // A PDF window opened on a file takes its sources from that file. Opened with
+  // nothing, it is the CV, which is the only PDF this filesystem has.
+  const node = path ? window.FS.resolve(path).node : null;
+  const pdf = (node && node.pdf) || { ko: S.cvKo, en: S.cvEn };
+  const bilingual = !!(pdf.ko && pdf.en);
+  const src = bilingual ? (which === "en" ? pdf.en : pdf.ko) : (pdf.ko || pdf.en || pdf.url);
+  const name = path ? path.split("/").pop() : `cv-${which}.pdf`;
   // github.com/<user>/<repo>/blob/<ref>/<path> is the page; the bytes are on raw.
   const raw = src
     .replace("https://github.com/", "https://raw.githubusercontent.com/")
@@ -73,21 +79,23 @@ export function PdfViewer({ lang, wm }) {
             <><span className="term-dot r" /><span className="term-dot y" /><span className="term-dot g" /></>
           )}
         </div>
-        <div className="term-title-name">{`${T.title} - cv-${which}.pdf`}</div>
+        <div className="term-title-name">{`${T.title} - ${name}`}</div>
         <div className="term-title-actions" />
       </div>
 
       <div className="pdfv-bar" onPointerDown={(e) => e.stopPropagation()}>
-        <div className="lang-seg" role="group" aria-label={T.title}>
-          <button className={"lang-btn" + (which === "ko" ? " on" : "")}
-                  onClick={() => setWhich("ko")}>{T.ko}</button>
-          <button className={"lang-btn" + (which === "en" ? " on" : "")}
-                  onClick={() => setWhich("en")}>{T.en}</button>
-        </div>
+        {bilingual && (
+          <div className="lang-seg" role="group" aria-label={T.title}>
+            <button className={"lang-btn" + (which === "ko" ? " on" : "")}
+                    onClick={() => setWhich("ko")}>{T.ko}</button>
+            <button className={"lang-btn" + (which === "en" ? " on" : "")}
+                    onClick={() => setWhich("en")}>{T.en}</button>
+          </div>
+        )}
         <span className="pdfv-size">{size}</span>
         {/* The blob is already in memory, so saving costs nothing extra. */}
         {state.url && (
-          <a className="pdfv-act" href={state.url} download={`cv-${which}.pdf`}>{T.save}</a>
+          <a className="pdfv-act" href={state.url} download={name}>{T.save}</a>
         )}
         <a className="pdfv-act" href={src} target="_blank" rel="noreferrer">{T.open} ↗</a>
       </div>
@@ -101,7 +109,7 @@ export function PdfViewer({ lang, wm }) {
             <a href={src} target="_blank" rel="noreferrer">{T.open} ↗</a>
           </div>
         ) : (
-          <iframe src={state.url} title={`cv-${which}.pdf`} />
+          <iframe src={state.url} title={name} />
         )}
       </div>
     </div>

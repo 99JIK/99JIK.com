@@ -12,18 +12,18 @@
   // the file manager and the desktop cannot show different things: they are the
   // same folder. `Exec` names an app in desktop.jsx, which validates it.
   const LAUNCHERS = [
-    { file: "terminal.desktop", name: "Terminal", exec: "terminal", icon: "▶_",
+    { file: "terminal.desktop", name: "Terminal", exec: "terminal", icon: "terminal",
       comment: "The shell this whole place is shaped like" },
-    { file: "files.desktop",    name: "Files",    exec: "files",    icon: "▤",
+    { file: "files.desktop",    name: "Files",    exec: "files",    icon: "files",
       comment: "Browse this filesystem without typing" },
-    { file: "browser.desktop",  name: "Browser",  exec: "browser",  icon: "◇",
+    { file: "browser.desktop",  name: "Browser",  exec: "browser",  icon: "browser",
       comment: "For the part of the web that permits being framed" },
-    { file: "chat.desktop",     name: "Chat",     exec: "chat",     icon: "✉",
+    { file: "calendar.desktop", name: "Calendar", exec: "calendar", icon: "calendar",
+      comment: "What the weeks look like, and how to take one of the gaps" },
+    { file: "chat.desktop",     name: "Chat",     exec: "chat",     icon: "chat",
       comment: "Reaches a phone; replies come back here" },
-    { file: "music.desktop",    name: "Music",    exec: "music",    icon: "♪",
+    { file: "music.desktop",    name: "Music",    exec: "music",    icon: "music",
       comment: "The playlist, read live from YouTube" },
-    { file: "cv.desktop",       name: "CV",       exec: "cv",       icon: "PDF",
-      comment: "Fetched from the cv repo and rendered here" },
   ];
 
   // The one file on the desktop that is not a launcher. It points the way and then
@@ -156,6 +156,17 @@
           type: "dir", mtime: dayAgo(0),
           children: Object.assign({
             "README.md": { type: "file", mtime: dayAgo(0), content: README(D) },
+            // A file, not a launcher. The PDF window is a PDF viewer, so the CV can
+            // be the document it is and open the way any document opens.
+            "이력서.pdf": {
+              type: "file", mtime: dayAgo(2), size: 0,
+              pdf: { ko: D.site.cvKo, en: D.site.cvEn },
+              content: [
+                "%PDF (fetched on open)",
+                "ko: " + D.site.cvKo,
+                "en: " + D.site.cvEn,
+              ],
+            },
           }, Object.fromEntries(LAUNCHERS.map((a, i) => [a.file, {
             type: "file", mtime: dayAgo(30 + i),
             content: [
