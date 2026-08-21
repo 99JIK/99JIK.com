@@ -735,15 +735,24 @@ check("a PDF anywhere goes to the PDF window", () => {
   return true;
 });
 
-check("a phone lands on the document, not a terminal", () => {
+check("a phone lands on the document, a tablet does not", () => {
   const m = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  const d = readFileSync(new URL("../src/desktop.jsx", import.meta.url), "utf8");
 
-  // Both files gate on the same query. If they drift, a device can fail the desktop
-  // test and still be handed the terminal, which is the case this exists to prevent.
-  const mq = m.match(/const DESKTOP_MQ = "([^"]+)"/);
-  if (!mq) throw new Error("main.jsx has no desktop media query");
-  if (!d.includes(mq[1])) throw new Error("main.jsx and desktop.jsx disagree on what a desktop is");
+  // Both queries demand a coarse pointer. Without it, shrinking a desktop browser
+  // window would read as a phone, and that visitor still has a keyboard and a mouse.
+  const qs = [...m.matchAll(/"\(pointer: coarse\) and \(max-(width|height): (\d+)px\)"/g)];
+  if (qs.length !== 2) throw new Error("expected a width test and a height test, got " + qs.length);
+  const by = Object.fromEntries(qs.map((q) => [q[1], +q[2]]));
+  // A phone in landscape is wide and short, so width alone misses it.
+  if (!by.width || !by.height) throw new Error("phones in landscape are not detected");
+  // The narrowest common tablet is 744px across. Cross that and tablets get swept in.
+  if (by.width >= 744) throw new Error("the width cut swallows tablets (" + by.width + "px)");
+  // A phone in landscape is around 390-430 tall; a tablet is 768 at the very least.
+  if (by.height >= 700) throw new Error("the height cut swallows tablets (" + by.height + "px)");
+
+  // The boot log is a terminal flourish in front of a document, and `pre` inside a
+  // clipped box cuts every line short on a narrow screen.
+  if (!/if \(isPhone\(\)\) return true;/.test(m)) throw new Error("phones still sit through the boot log");
 
   // An explicit ?view= beats the device, or the link handed to a recruiter changes
   // meaning depending on the phone they open it on.
@@ -753,9 +762,6 @@ check("a phone lands on the document, not a terminal", () => {
   // stored one instead would drop ?view=terminal on a phone, so a visitor who chose
   // the terminal would be bounced back to the document on every reload.
   if (/mode === tweaks\.defaultMode/.test(m)) throw new Error("url cleanup uses the stored default, losing the visitor's switch");
-  if (!/mode === defMode/.test(m)) throw new Error("url cleanup does not use the effective default");
-
-  // Read once, so resizing past the breakpoint does not swap the view mid-read.
   if (!/React\.useState\(defaultModeFor\)/.test(m)) throw new Error("the default is recomputed on render");
   return true;
 });

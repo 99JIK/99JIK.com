@@ -108,19 +108,29 @@ function viewFromUrl() {
   } catch { return null; }
 }
 
-// The desktop needs room and a real pointer; the same test decides what a visitor
-// lands on. A phone that cannot run the desktop should not be handed a bare terminal
-// either: typing commands on a touch keyboard that covers half the screen is the
-// worst of both. It gets the document, which is a document and reflows like one.
+// A phone, and only a phone. Typing commands on a touch keyboard that covers half
+// the screen is the worst of both worlds, so it gets the document instead, which is
+// a document and reflows like one. A tablet is not this: it has the room, and it
+// keeps the terminal.
 //
+// Two tests because a phone in landscape is wide and short. `pointer: coarse` keeps
+// a merely small desktop window out of it: shrinking a browser is not a phone, and
+// that visitor still has a keyboard and a mouse.
+//
+//   iPhone portrait   390x844   -> width  ✓        tablet portrait   820x1180  -> neither
+//   iPhone landscape  844x390   -> height ✓        tablet landscape 1180x820   -> neither
+const PHONE_MQ = ["(pointer: coarse) and (max-width: 700px)",
+                  "(pointer: coarse) and (max-height: 500px)"];
+function isPhone() {
+  try { return PHONE_MQ.some((q) => window.matchMedia(q).matches); } catch { return false; }
+}
+
 // Nothing writes `defaultMode` today, so this overrides no stored choice. `?view=`
 // still wins, and a visitor who switches carries that in the URL across reloads.
-const DESKTOP_MQ = "(min-width: 860px) and (pointer: fine)";
 function defaultModeFor() {
   const pref = window.PREFS.load().defaultMode;
   if (pref === "easy") return "easy";
-  try { if (!window.matchMedia(DESKTOP_MQ).matches) return "easy"; } catch {}
-  return pref;
+  return isPhone() ? "easy" : pref;
 }
 
 const BOOT_KEY = "99jik:booted";
@@ -135,6 +145,7 @@ function App() {
   const [bootDone, setBootDone] = React.useState(() => {
     // Reduced motion skips the boot log entirely: it is 28 timed lines of pure motion.
     if (window.prefersReducedMotion()) return true;
+    if (isPhone()) return true;
     return window.PREFS.store.get(BOOT_KEY) === BOOT_VERSION;
   });
   // True only for the run that just watched the boot log, so the desktop wakes up
